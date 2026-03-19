@@ -1,0 +1,761 @@
+/*
+ * ============================================================
+ * SONKHANG ERP v3.5 — Premium UI/UX Upgrade CSS
+ * Theme: Dark Glass · SaaS Dashboard 2026
+ *
+ * Quy tắc:
+ *  - Chỉ CAN THIỆP lên các class sk-* đã có
+ *  - Màu nền gốc #0f172a / #1e293b giữ nguyên
+ *  - Không thêm class mới vào HTML cũ
+ * ============================================================
+ */
+
+/* ─── 1. CSS CUSTOM PROPERTIES (Design Tokens) ──────────────── */
+:root {
+  /* Màu nền */
+  --sk-bg-page:     #080f1e;        /* sâu hơn gốc một chút */
+  --sk-bg-card:     #111827;        /* thay #1e293b */
+  --sk-bg-card-2:   #0d1526;
+  --sk-bg-glass:    rgba(15, 23, 42, 0.75);
+  --sk-bg-glass-sb: rgba(8, 15, 30, 0.85);
+
+  /* Viền */
+  --sk-border:      rgba(148, 163, 184, 0.08);
+  --sk-border-glow: rgba(148, 163, 184, 0.15);
+
+  /* Chữ */
+  --sk-text-primary:   #f1f5f9;
+  --sk-text-secondary: #94a3b8;
+  --sk-text-muted:     #475569;
+
+  /* Màu nhấn */
+  --sk-blue:   #3b82f6;
+  --sk-green:  #10b981;
+  --sk-red:    #ef4444;
+  --sk-yellow: #f59e0b;
+  --sk-purple: #8b5cf6;
+  --sk-orange: #f97316;
+  --sk-teal:   #14b8a6;
+
+  /* Glow shadows */
+  --sk-glow-blue:   0 0 20px rgba(59,  130, 246, 0.25), 0 0 60px rgba(59,  130, 246, 0.08);
+  --sk-glow-green:  0 0 20px rgba(16,  185, 129, 0.25), 0 0 60px rgba(16,  185, 129, 0.08);
+  --sk-glow-red:    0 0 20px rgba(239, 68,  68,  0.25), 0 0 60px rgba(239, 68,  68,  0.08);
+  --sk-glow-yellow: 0 0 20px rgba(245, 158, 11,  0.25), 0 0 60px rgba(245, 158, 11,  0.08);
+  --sk-glow-purple: 0 0 20px rgba(139, 92,  246, 0.25), 0 0 60px rgba(139, 92,  246, 0.08);
+  --sk-glow-orange: 0 0 20px rgba(249, 115, 22,  0.25), 0 0 60px rgba(249, 115, 22,  0.08);
+  --sk-glow-teal:   0 0 20px rgba(20,  184, 166, 0.25), 0 0 60px rgba(20,  184, 166, 0.08);
+
+  /* Elevation shadows */
+  --sk-shadow-sm:   0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --sk-shadow-md:   0 4px 16px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3);
+  --sk-shadow-lg:   0 10px 40px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4);
+  --sk-shadow-card: 0 2px 8px rgba(0,0,0,0.5),
+                    0 0 0 1px rgba(148,163,184,0.06),
+                    inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* Transition */
+  --sk-transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  --sk-transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Radius */
+  --sk-radius-sm:  8px;
+  --sk-radius-md:  12px;
+  --sk-radius-lg:  16px;
+  --sk-radius-xl:  20px;
+}
+
+
+/* ─── 2. RESET & BASE ────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--sk-bg-page);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 60% at 80% 80%,  rgba(139,92,246,0.04) 0%, transparent 60%);
+  background-attachment: fixed;
+  color: var(--sk-text-primary);
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+/* Scrollbar tùy chỉnh */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.15);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.3); }
+
+
+/* ─── 3. SIDEBAR ─────────────────────────────────────────────── */
+.sk-sb {
+  background: var(--sk-bg-glass-sb) !important;
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid var(--sk-border-glow) !important;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.03);
+  position: fixed;
+  top: 0; left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 100;
+  transition: var(--sk-transition);
+}
+
+/* Logo / brand area */
+.sk-sb > *:first-child {
+  border-bottom: 1px solid var(--sk-border);
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+}
+
+/* Section headers */
+.sk-sec {
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  color: rgba(148,163,184,0.45) !important;
+  padding: 16px 14px 6px !important;
+}
+
+/* Nav items */
+.sk-na {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px !important;
+  margin: 1px 8px !important;
+  border-radius: var(--sk-radius-md) !important;
+  font-size: 12px !important;
+  font-weight: 400;
+  color: var(--sk-text-secondary) !important;
+  cursor: pointer;
+  transition: var(--sk-transition) !important;
+  overflow: hidden;
+  white-space: nowrap;
+  text-decoration: none !important;
+}
+
+.sk-na::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border-radius: inherit;
+}
+
+.sk-na:hover {
+  background: rgba(59,130,246,0.1) !important;
+  color: var(--sk-text-primary) !important;
+  transform: translateX(2px);
+  box-shadow: inset 3px 0 0 rgba(59,130,246,0.6),
+              0 2px 12px rgba(59,130,246,0.08);
+}
+
+.sk-na:hover::before { opacity: 1; }
+
+/* Active state */
+.sk-na.active,
+.sk-na[style*="background"] {
+  background: linear-gradient(135deg,
+    rgba(59,130,246,0.18) 0%,
+    rgba(59,130,246,0.08) 100%) !important;
+  color: #93c5fd !important;
+  font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--sk-blue),
+              0 2px 16px rgba(59,130,246,0.15),
+              var(--sk-shadow-sm);
+}
+
+
+/* ─── 4. TOPBAR ──────────────────────────────────────────────── */
+.sk-tb {
+  background: rgba(8, 15, 30, 0.8) !important;
+  backdrop-filter: blur(16px) saturate(200%);
+  -webkit-backdrop-filter: blur(16px) saturate(200%);
+  border-bottom: 1px solid var(--sk-border-glow) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03),
+              0 4px 24px rgba(0,0,0,0.3);
+  position: sticky !important;
+  top: 0;
+  z-index: 90;
+  transition: var(--sk-transition);
+}
+
+
+/* ─── 5. MAIN CONTENT AREA ───────────────────────────────────── */
+.sk-main {
+  margin-left: 200px;
+  min-height: 100vh;
+}
+
+.sk-pad {
+  padding: 22px 24px !important;
+  max-width: 1400px !important;
+}
+
+
+/* ─── 6. KPI CARDS ───────────────────────────────────────────── */
+.sk-kpi {
+  position: relative;
+  background: var(--sk-bg-card) !important;
+  border-radius: var(--sk-radius-lg) !important;
+  padding: 18px 20px 16px !important;
+
+  /* Gradient border trick — 1px wrap */
+  border: none !important;
+  box-shadow: var(--sk-shadow-card) !important;
+
+  /* Pseudo gradient border */
+  background-clip: padding-box;
+
+  transition: var(--sk-transition) !important;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* Gradient viền dải mảnh */
+.sk-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.1) 0%,
+    rgba(255,255,255,0.03) 40%,
+    transparent 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Ánh sáng nội tại (inner highlight) */
+.sk-kpi::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.08) 30%,
+    rgba(255,255,255,0.12) 50%,
+    rgba(255,255,255,0.08) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Hover: nổi lên */
+.sk-kpi:hover {
+  transform: translateY(-4px) !important;
+  box-shadow:
+    var(--sk-shadow-lg) !important;
+}
+
+/* Dải màu top (border-top giữ nguyên vì logic dùng inline style) */
+/* Tăng độ dày và làm glow */
+.sk-kpi[style*="border-top"] {
+  position: relative;
+}
+
+/* Glow theo màu border-top */
+.sk-kpi[style*="#3b82f6"]:hover,
+.sk-kpi[style*="border-top-color:#3b82f6"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-blue) !important;
+}
+.sk-kpi[style*="#10b981"]:hover,
+.sk-kpi[style*="border-top-color:#10b981"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-green) !important;
+}
+.sk-kpi[style*="#ef4444"]:hover,
+.sk-kpi[style*="border-top-color:#ef4444"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-red) !important;
+}
+.sk-kpi[style*="#f59e0b"]:hover,
+.sk-kpi[style*="border-top-color:#f59e0b"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-yellow) !important;
+}
+.sk-kpi[style*="#8b5cf6"]:hover,
+.sk-kpi[style*="border-top-color:#8b5cf6"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-purple) !important;
+}
+.sk-kpi[style*="#f97316"]:hover,
+.sk-kpi[style*="border-top-color:#f97316"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-orange) !important;
+}
+.sk-kpi[style*="#14b8a6"]:hover,
+.sk-kpi[style*="border-top-color:#14b8a6"]:hover {
+  box-shadow: var(--sk-shadow-lg), var(--sk-glow-teal) !important;
+}
+
+/* Glow ngay khi hiển thị (ambient glow nhẹ) */
+.sk-kpi[style*="#3b82f6"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(59,130,246,0.06) !important; }
+.sk-kpi[style*="#10b981"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(16,185,129,0.06) !important; }
+.sk-kpi[style*="#ef4444"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(239,68,68,0.06) !important; }
+.sk-kpi[style*="#f59e0b"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(245,158,11,0.06) !important; }
+.sk-kpi[style*="#8b5cf6"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(139,92,246,0.06) !important; }
+.sk-kpi[style*="#f97316"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(249,115,22,0.06) !important; }
+.sk-kpi[style*="#14b8a6"]  { box-shadow: var(--sk-shadow-card), 0 0 30px rgba(20,184,166,0.06) !important; }
+
+/* KPI text */
+.sk-kl {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: var(--sk-text-muted) !important;
+  margin-bottom: 8px !important;
+}
+
+.sk-kv {
+  font-size: 22px !important;
+  font-weight: 800 !important;
+  color: var(--sk-text-primary) !important;
+  line-height: 1.1 !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 6px !important;
+}
+
+.sk-ks {
+  font-size: 11px !important;
+  color: var(--sk-text-muted) !important;
+  line-height: 1.4 !important;
+}
+
+/* Grid KPI */
+.sk-g5 {
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 14px !important;
+}
+
+@media (max-width: 1280px) {
+  .sk-g5 { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 900px) {
+  .sk-g5 { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+
+/* ─── 7. PANELS ──────────────────────────────────────────────── */
+.sk-panel {
+  background: var(--sk-bg-card) !important;
+  border: 1px solid var(--sk-border) !important;
+  border-radius: var(--sk-radius-lg) !important;
+  padding: 20px !important;
+  box-shadow: var(--sk-shadow-card) !important;
+  transition: var(--sk-transition) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Top highlight line */
+.sk-panel::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.06) 20%,
+    rgba(255,255,255,0.1) 50%,
+    rgba(255,255,255,0.06) 80%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.sk-panel:hover {
+  border-color: rgba(148,163,184,0.14) !important;
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(255,255,255,0.05),
+    inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+
+.sk-pt {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--sk-text-primary) !important;
+  letter-spacing: -0.01em !important;
+  margin-bottom: 14px !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Chấm màu trước panel title */
+.sk-pt::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sk-blue);
+  box-shadow: 0 0 6px var(--sk-blue);
+  flex-shrink: 0;
+}
+
+
+/* ─── 8. INPUT & BUTTON ──────────────────────────────────────── */
+.sk-inp {
+  background: rgba(8,15,30,0.8) !important;
+  border: 1px solid var(--sk-border-glow) !important;
+  border-radius: var(--sk-radius-md) !important;
+  color: var(--sk-text-primary) !important;
+  font-size: 13px !important;
+  padding: 9px 12px !important;
+  width: 100%;
+  transition: var(--sk-transition) !important;
+  outline: none;
+}
+
+.sk-inp:focus {
+  border-color: rgba(59,130,246,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1),
+              inset 0 1px 0 rgba(255,255,255,0.04) !important;
+  background: rgba(8,15,30,0.95) !important;
+}
+
+.sk-inp::placeholder { color: var(--sk-text-muted) !important; }
+
+.sk-btn {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+  border: none !important;
+  border-radius: var(--sk-radius-md) !important;
+  color: #fff !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 10px 18px !important;
+  cursor: pointer;
+  transition: var(--sk-transition) !important;
+  box-shadow: 0 2px 12px rgba(59,130,246,0.35),
+              inset 0 1px 0 rgba(255,255,255,0.15) !important;
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transition: left 0.4s ease;
+}
+
+.sk-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 20px rgba(59,130,246,0.5),
+              inset 0 1px 0 rgba(255,255,255,0.2) !important;
+  background: linear-gradient(135deg, #4f93ff 0%, #3b82f6 100%) !important;
+}
+
+.sk-btn:hover::before { left: 140%; }
+
+.sk-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 6px rgba(59,130,246,0.3) !important;
+}
+
+
+/* ─── 9. SKELETON LOADER ─────────────────────────────────────── */
+.sk-skel {
+  background: linear-gradient(
+    90deg,
+    rgba(30,41,59,0.6) 25%,
+    rgba(51,65,85,0.5) 50%,
+    rgba(30,41,59,0.6) 75%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: sk-shimmer 1.8s ease-in-out infinite !important;
+  border-radius: var(--sk-radius-md) !important;
+}
+
+@keyframes sk-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
+/* ─── 10. TABLES ─────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+thead tr {
+  border-bottom: 1px solid var(--sk-border-glow);
+}
+
+thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sk-text-muted);
+}
+
+tbody tr {
+  border-bottom: 1px solid rgba(30,41,59,0.6);
+  transition: background 0.15s ease;
+}
+
+tbody tr:hover {
+  background: rgba(59,130,246,0.04);
+}
+
+tbody td {
+  padding: 11px 12px;
+  color: var(--sk-text-secondary);
+}
+
+tbody tr:last-child { border-bottom: none; }
+
+
+/* ─── 11. BADGES / TAGS ──────────────────────────────────────── */
+.sk-badge,
+[class*="badge"],
+[class*="status"],
+[class*="tag"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* Status colors — map lên các màu thường gặp */
+.sk-badge-green, [class*="paid"], [class*="done"], [class*="active"] {
+  background: rgba(16,185,129,0.12) !important;
+  color: #34d399 !important;
+  box-shadow: 0 0 0 1px rgba(16,185,129,0.2);
+}
+.sk-badge-red, [class*="cancel"], [class*="overdue"] {
+  background: rgba(239,68,68,0.12) !important;
+  color: #f87171 !important;
+  box-shadow: 0 0 0 1px rgba(239,68,68,0.2);
+}
+.sk-badge-yellow, [class*="pending"], [class*="review"] {
+  background: rgba(245,158,11,0.12) !important;
+  color: #fbbf24 !important;
+  box-shadow: 0 0 0 1px rgba(245,158,11,0.2);
+}
+.sk-badge-blue, [class*="process"] {
+  background: rgba(59,130,246,0.12) !important;
+  color: #93c5fd !important;
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.2);
+}
+
+
+/* ─── 12. MODAL / DIALOG ─────────────────────────────────────── */
+.sk-modal-overlay,
+[class*="modal-bg"],
+[class*="overlay"] {
+  background: rgba(4,9,20,0.75) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.sk-modal,
+[class*="modal-box"] {
+  background: #111827 !important;
+  border: 1px solid var(--sk-border-glow) !important;
+  border-radius: var(--sk-radius-xl) !important;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.7),
+              0 0 0 1px rgba(255,255,255,0.04),
+              inset 0 1px 0 rgba(255,255,255,0.06) !important;
+}
+
+
+/* ─── 13. CHART CONTAINERS ───────────────────────────────────── */
+canvas {
+  border-radius: var(--sk-radius-md);
+}
+
+
+/* ─── 14. SELECT / DROPDOWN ──────────────────────────────────── */
+select {
+  background: rgba(8,15,30,0.8) !important;
+  border: 1px solid var(--sk-border-glow) !important;
+  border-radius: var(--sk-radius-md) !important;
+  color: var(--sk-text-primary) !important;
+  padding: 8px 12px !important;
+  font-size: 13px !important;
+  cursor: pointer;
+  transition: var(--sk-transition) !important;
+  outline: none;
+  appearance: none;
+}
+
+select:focus {
+  border-color: rgba(59,130,246,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1) !important;
+}
+
+
+/* ─── 15. PROGRESS BARS ──────────────────────────────────────── */
+progress,
+[class*="progress-bar"],
+[class*="prog"] {
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(30,41,59,0.8) !important;
+  height: 4px;
+}
+
+[class*="progress-fill"] {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--sk-blue), #818cf8) !important;
+  box-shadow: 0 0 8px rgba(59,130,246,0.5);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
+/* ─── 16. STATUS INDICATOR ───────────────────────────────────── */
+.sk-ps {
+  font-size: 11px;
+  color: var(--sk-text-muted);
+  padding: 4px 0;
+}
+
+
+/* ─── 17. NOTIFICATIONS / ALERTS ─────────────────────────────── */
+[class*="alert"],
+[class*="toast"],
+[class*="notif"] {
+  border-radius: var(--sk-radius-md) !important;
+  border: 1px solid var(--sk-border-glow) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+
+/* ─── 18. PAGE HEADER ────────────────────────────────────────── */
+h1, h2, h3 {
+  color: var(--sk-text-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: 22px; }
+h2 { font-size: 18px; }
+h3 { font-size: 15px; }
+
+/* Page title (thường là text đầu trong .sk-pad) */
+.sk-pad > *:first-child {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sk-text-primary);
+  margin-bottom: 18px;
+}
+
+
+/* ─── 19. MISC UTILITIES ─────────────────────────────────────── */
+a {
+  color: #60a5fa;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover { color: #93c5fd; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--sk-border);
+  margin: 16px 0;
+}
+
+/* Loading spinner nếu dùng */
+@keyframes sk-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.sk-spin {
+  animation: sk-spin 0.8s linear infinite;
+}
+
+
+/* ─── 20. RESPONSIVE TWEAKS ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .sk-sb {
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+  .sk-main {
+    margin-left: 0 !important;
+  }
+  .sk-pad {
+    padding: 14px !important;
+  }
+  .sk-g5 {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+
+/* ─── 21. PRINT ──────────────────────────────────────────────── */
+@media print {
+  .sk-sb, .sk-tb { display: none !important; }
+  .sk-main { margin-left: 0 !important; }
+  body { background: white !important; color: black !important; }
+}
+
+
+/* ─── 22. ANIMATION KHAI BÁO ────────────────────────────────── */
+@keyframes sk-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes sk-slide-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sk-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Áp dụng animation khi load */
+.sk-kpi {
+  animation: sk-fade-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.sk-kpi:nth-child(1) { animation-delay: 0.04s; }
+.sk-kpi:nth-child(2) { animation-delay: 0.08s; }
+.sk-kpi:nth-child(3) { animation-delay: 0.12s; }
+.sk-kpi:nth-child(4) { animation-delay: 0.16s; }
+.sk-kpi:nth-child(5) { animation-delay: 0.20s; }
+
+.sk-panel {
+  animation: sk-scale-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
+}

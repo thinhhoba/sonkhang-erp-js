@@ -635,6 +635,190 @@ function _patchPageTitle() {
 })();
 
 // ── Exports (môi trường module) ───────────────────────────────
+
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD ALERTS & BANNERS
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * alertBanner(alerts)
+ * Render một dải cảnh báo màu sắc từ mảng alert objects
+ * Mỗi alert: { level, icon, msg, href }
+ * level: 'critical' | 'high' | 'medium' | 'low' | 'info'
+ */
+function alertBanner(alerts) {
+  if (!alerts || !alerts.length) return '';
+
+  var colorMap = {
+    critical: { bg: 'rgba(239,68,68,0.1)',   border: '#fca5a5', text: '#fca5a5' },
+    high:     { bg: 'rgba(249,115,22,0.1)',  border: '#fdba74', text: '#fdba74' },
+    medium:   { bg: 'rgba(245,158,11,0.1)',  border: '#fbbf24', text: '#fbbf24' },
+    low:      { bg: 'rgba(59,130,246,0.1)',  border: '#93c5fd', text: '#93c5fd' },
+    info:     { bg: 'rgba(16,185,129,0.08)', border: '#6ee7b7', text: '#6ee7b7' },
+  };
+
+  var html = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">';
+
+  alerts.forEach(function(a) {
+    var c = colorMap[a.level] || colorMap.low;
+    var inner = '<span style="font-size:14px;">' + (a.icon || '\u26A0') + '</span>'
+      + '<span style="flex:1;font-size:12px;font-weight:600;">' + a.msg + '</span>'
+      + '<span style="font-size:11px;opacity:0.6;">\u2192</span>';
+
+    if (a.href && a.href !== '#') {
+      html += '<a href="' + a.href + '" style="'
+        + 'display:flex;align-items:center;gap:10px;'
+        + 'padding:10px 14px;border-radius:10px;'
+        + 'background:' + c.bg + ';'
+        + 'border:1px solid ' + c.border + ';'
+        + 'color:' + c.text + ';'
+        + 'text-decoration:none;'
+        + 'transition:opacity 0.2s;'
+        + '">' + inner + '</a>';
+    } else {
+      html += '<div style="'
+        + 'display:flex;align-items:center;gap:10px;'
+        + 'padding:10px 14px;border-radius:10px;'
+        + 'background:' + c.bg + ';'
+        + 'border:1px solid ' + c.border + ';'
+        + 'color:' + c.text + ';'
+        + '">' + inner + '</div>';
+    }
+  });
+
+  return html + '</div>';
+}
+
+/**
+ * buildDashboardAlerts(data)
+ * Tự động tạo mảng alerts từ dữ liệu dashboard
+ * data: { inventory, sales, finance }
+ * Trả về mảng { level, icon, msg, href } để đưa vào alertBanner()
+ */
+function buildDashboardAlerts(data) {
+  var alerts = [];
+  var inv  = data.inventory || {};
+  var sal  = data.sales     || {};
+  var fin  = data.finance   || {};
+
+  // ── Kho hàng ─────────────────────────────────────────────
+  var expired = Number(inv.expired || 0);
+  var red     = Number(inv.critical_red || 0);
+  var yellow  = Number(inv.warning_yellow || 0);
+
+  if (expired > 0) {
+    alerts.push({
+      level: 'critical',
+      icon:  '\uD83D\uDEA8',
+      msg:   expired + ' l\u00f4 h\u00e0ng \u0111\u00e3 h\u1ebft h\u1ea1n \u2014 c\u1ea7n x\u1eed l\u00fd ngay!',
+      href:  '/p/kho.html',
+    });
+  }
+  if (red > 0) {
+    alerts.push({
+      level: 'high',
+      icon:  '\u23F0',
+      msg:   red + ' l\u00f4 s\u1eafp h\u1ebft h\u1ea1n (d\u01b0\u1edbi 7 ng\u00e0y)',
+      href:  '/p/kho.html',
+    });
+  }
+  if (yellow > 0) {
+    alerts.push({
+      level: 'medium',
+      icon:  '\uD83D\uDCE6',
+      msg:   yellow + ' l\u00f4 c\u1ea7n ch\u00fa \u00fd (d\u01b0\u1edbi 30 ng\u00e0y)',
+      href:  '/p/kho.html',
+    });
+  }
+
+  // ── Tồn kho dưới mức an toàn (từ inv.low_stock) ──────────
+  var lowStock = Number(inv.low_stock || inv.hang_thap || 0);
+  if (lowStock > 0) {
+    alerts.push({
+      level: 'medium',
+      icon:  '\uD83D\uDD35',
+      msg:   lowStock + ' s\u1ea3n ph\u1ea9m t\u1ed3n kho d\u01b0\u1edbi m\u1ee9c an to\u00e0n',
+      href:  '/p/san-pham.html',
+    });
+  }
+
+  // ── Đơn Sapo chưa xử lý ──────────────────────────────────
+  var unfulfilled = Number(sal.unfulfilled || 0);
+  if (unfulfilled >= 10) {
+    alerts.push({
+      level: 'high',
+      icon:  '\uD83D\uDED2',
+      msg:   unfulfilled + ' \u0111\u01a1n h\u00e0ng ch\u01b0a giao — c\u1ea7n x\u1eed l\u00fd',
+      href:  '/p/dong-goi.html',
+    });
+  } else if (unfulfilled > 0) {
+    alerts.push({
+      level: 'low',
+      icon:  '\uD83D\uDED2',
+      msg:   unfulfilled + ' \u0111\u01a1n ch\u01b0a giao',
+      href:  '/p/dong-goi.html',
+    });
+  }
+
+  // ── COD chờ thu tiền ─────────────────────────────────────
+  var cod = Number(sal.cod_pending || 0);
+  if (cod >= 10000000) { // >= 10 triệu
+    alerts.push({
+      level: 'medium',
+      icon:  '\uD83D\uDCB5',
+      msg:   'COD ch\u1edd thu: ' + fv(cod),
+      href:  '/p/hoa-don-ban.html',
+    });
+  }
+
+  // ── Số dư âm ─────────────────────────────────────────────
+  var balance = Number(fin.balance || 0);
+  if (balance < 0) {
+    alerts.push({
+      level: 'critical',
+      icon:  '\uD83D\uDCC9',
+      msg:   'S\u1ed1 d\u01b0 qu\u1ef9 \u00e2m: ' + fv(balance),
+      href:  '/p/tai-chinh.html',
+    });
+  }
+
+  return alerts;
+}
+
+/**
+ * stockAlertSummary(inv)
+ * Trả về HTML tóm tắt nhanh trạng thái kho
+ * Dùng trong widget nhỏ hoặc tooltip
+ */
+function stockAlertSummary(inv) {
+  inv = inv || {};
+  var expired = Number(inv.expired || 0);
+  var red     = Number(inv.critical_red || 0);
+  var yellow  = Number(inv.warning_yellow || 0);
+  var green   = Number(inv.green || 0);
+  var low     = Number(inv.low_stock || inv.hang_thap || 0);
+
+  var total   = expired + red + yellow + green;
+  var critical= expired + red;
+
+  var overallColor = critical > 0 ? '#ef4444' : yellow > 0 ? '#f59e0b' : '#10b981';
+  var overallIcon  = critical > 0 ? '\uD83D\uDD34' : yellow > 0 ? '\uD83D\uDFE1' : '\uD83D\uDFE2';
+
+  return '<div style="display:flex;align-items:center;gap:10px;padding:10px;'
+    + 'background:rgba(15,23,42,0.5);border-radius:10px;">'
+    + '<span style="font-size:18px;">' + overallIcon + '</span>'
+    + '<div style="flex:1;">'
+    +   '<div style="font-size:12px;font-weight:700;color:' + overallColor + ';">'
+    +     (critical > 0 ? critical + ' l\u00f4 c\u1ea7n x\u1eed l\u00fd' : '\u0110ang \u1ed5n')
+    +   '</div>'
+    +   '<div style="font-size:10px;color:#475569;">'
+    +     '\u1ea4 v\u00e0ng: ' + yellow + ' \u00b7 \u1eef xanh: ' + green
+    +     (low > 0 ? ' \u00b7 D\u01b0\u1edbi min: ' + low : '')
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     fv, fn, fpct, fd, fdt, fago, trunc,
@@ -647,5 +831,8 @@ if (typeof module !== 'undefined' && module.exports) {
     financeMini, progressBar,
     avatar, staffRow, tableSimple,
     initSidebar,
+    alertBanner,
+    buildDashboardAlerts,
+    stockAlertSummary,
   };
 }

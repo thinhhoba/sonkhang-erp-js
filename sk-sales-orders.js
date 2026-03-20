@@ -138,15 +138,108 @@
 
   function _soRefresh() {
     var apiF = _api(); if (!apiF) return;
-    _toast('Đang đồng bộ Sapo...','ok');
-    apiF('sapo_sync_all', {}, function(e,d) {
-      if (e||!d||!d.ok) { _toast((d&&d.error)||'Lỗi','error'); return; }
-      _toast('✅ '+d.msg,'ok');
-      _loadOrders(_curStatus);
-      _loadDashboard();
+    // Kiem tra config truoc
+    apiF('sapo_get_config', {}, function(e,d) {
+      if (!e && d && d.ok && !d.configured) {
+        _soShowSapoConfig(d);
+        return;
+      }
+      _toast('Đang đồng bộ Sapo...','ok');
+      apiF('sapo_sync_all', {}, function(e2,d2) {
+        if (e2||!d2||!d2.ok) {
+          if (d2 && d2.steps) {
+            // Chua config
+            _soShowSapoConfigGuide(d2);
+          } else {
+            _toast((d2&&d2.error)||'Lỗi đồng bộ Sapo','error');
+          }
+          return;
+        }
+        _toast('✅ '+d2.msg,'ok');
+        _loadOrders(_curStatus);
+        _loadDashboard();
+      });
     });
   }
   window._soRefresh = _soRefresh;
+
+  function _soShowSapoConfig(info) {
+    var html = '<div class="sk-modal-hd">'
+      + '<div style="font-size:15px;font-weight:900;">⚙️ Cài đặt kết nối Sapo</div>'
+      + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
+      + '<div class="sk-modal-bd">'
+      + '<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:14px;margin-bottom:16px;">'
+      + '<div style="font-size:12px;font-weight:800;color:var(--yellow);margin-bottom:6px;">⚠️ Chưa cấu hình Sapo API</div>'
+      + '<div style="font-size:11px;color:var(--text3);">Nhập thông tin từ Admin Sapo → Ứng dụng → Private Apps</div>'
+      + '</div>'
+      + '<div class="sk-form-grid">'
+      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Tên shop Sapo (subdomain)</label>'
+      + '<input class="form-input" id="sapo-shop" placeholder="vd: sonkhang (trong sonkhang.mysapogo.com)" value="'+((info&&info.shop)||'')+'"></div>'
+      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Access Token (Private App)</label>'
+      + '<input class="form-input" id="sapo-token" type="password" placeholder="shpat_xxxxxxxxxxxx"></div>'
+      + '</div></div>'
+      + '<div class="sk-modal-ft">'
+      + '<button class="btn-ghost" onclick="closeSalesModal()">Hủy</button>'
+      + '<button class="btn-ghost" onclick="_sapoTestConn()" style="font-size:12px;">🔍 Test kết nối</button>'
+      + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu & Đồng bộ</button>'
+      + '</div>';
+    window.showSalesModal ? window.showSalesModal(html) : null;
+  }
+  window._soShowSapoConfig = _soShowSapoConfig;
+
+  function _soShowSapoConfigGuide(d) {
+    var steps = (d.steps||[]).join('</div><div style="padding:5px 0;font-size:11px;">');
+    var html = '<div class="sk-modal-hd">'
+      + '<div style="font-size:15px;font-weight:900;">⚙️ Hướng dẫn cài đặt Sapo</div>'
+      + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
+      + '<div class="sk-modal-bd">'
+      + '<div style="font-size:12px;color:var(--red);margin-bottom:12px;">'+_esc(d.error||'')+'</div>'
+      + '<div style="background:var(--bg3);border-radius:10px;padding:14px;">'
+      + '<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:8px;">HƯỚNG DẪN:</div>'
+      + '<div style="padding:5px 0;font-size:11px;">'+steps+'</div>'
+      + '</div>'
+      + '<div style="margin-top:16px;" class="sk-form-grid">'
+      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Tên shop</label>'
+      + '<input class="form-input" id="sapo-shop" placeholder="tenShop (không có .mysapogo.com)"></div>'
+      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Access Token</label>'
+      + '<input class="form-input" id="sapo-token" type="password" placeholder="Token từ Sapo Admin"></div>'
+      + '</div></div>'
+      + '<div class="sk-modal-ft">'
+      + '<button class="btn-ghost" onclick="closeSalesModal()">Đóng</button>'
+      + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu config</button>'
+      + '</div>';
+    window.showSalesModal ? window.showSalesModal(html) : null;
+  }
+
+  function _sapoTestConn() {
+    var apiF = _api(); if (!apiF) return;
+    var shop  = document.getElementById('sapo-shop')  ? document.getElementById('sapo-shop').value  : '';
+    var token = document.getElementById('sapo-token') ? document.getElementById('sapo-token').value : '';
+    if (!shop||!token) { _toast('Nhập Shop và Token','error'); return; }
+    // Luu tam roi test
+    apiF('sapo_save_config',{shop:shop,token:token},function(e,d){
+      if(e||!d||!d.ok){_toast('Lỗi lưu config','error');return;}
+      apiF('sapo_test',{},function(e2,d2){
+        if(e2||!d2||!d2.ok){_toast((d2&&d2.error)||'Kết nối thất bại','error');return;}
+        _toast('✅ Kết nối thành công: '+( d2.shop_name||'OK' ),'ok');
+      });
+    });
+  }
+  window._sapoTestConn = _sapoTestConn;
+
+  function _sapoSaveConfig() {
+    var apiF = _api(); if (!apiF) return;
+    var shop  = document.getElementById('sapo-shop')  ? document.getElementById('sapo-shop').value  : '';
+    var token = document.getElementById('sapo-token') ? document.getElementById('sapo-token').value : '';
+    if (!shop||!token) { _toast('Nhập đủ Shop và Token','error'); return; }
+    apiF('sapo_save_config',{shop:shop,token:token},function(e,d){
+      if(e||!d||!d.ok){_toast((d&&d.error)||'Lỗi','error');return;}
+      _toast('✅ Đã lưu config Sapo. Đang đồng bộ...','ok');
+      if(typeof window.closeSalesModal==='function') window.closeSalesModal();
+      _soRefresh();
+    });
+  }
+  window._sapoSaveConfig = _sapoSaveConfig;
 
   /* ── Render Order List ────────────────────────────────────── */
   function _renderOrderList(orders) {

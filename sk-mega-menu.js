@@ -252,17 +252,32 @@
       var btn  = g.querySelector('.mmn-btn');
       var drop = g.querySelector('.mmn-dropdown');
 
-      // Hover on desktop
+      var _closeTimer = null;
+
+      // Hover on desktop — delay đóng để chuột kịp vào dropdown
       g.addEventListener('mouseenter', function() {
+        if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
         _closeAllDropdowns();
         drop.classList.add('open');
         g.classList.add('active');
         _activeMenu = g.getAttribute('data-id');
       });
+      drop.addEventListener('mouseenter', function() {
+        if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
+      });
       g.addEventListener('mouseleave', function() {
-        drop.classList.remove('open');
-        g.classList.remove('active');
-        _activeMenu = null;
+        _closeTimer = setTimeout(function() {
+          drop.classList.remove('open');
+          g.classList.remove('active');
+          if (_activeMenu === g.getAttribute('data-id')) _activeMenu = null;
+        }, 220); /* 220ms delay — đủ để chuột di chuyển vào dropdown */
+      });
+      drop.addEventListener('mouseleave', function() {
+        _closeTimer = setTimeout(function() {
+          drop.classList.remove('open');
+          g.classList.remove('active');
+          _activeMenu = null;
+        }, 120);
       });
 
       // Click on mobile

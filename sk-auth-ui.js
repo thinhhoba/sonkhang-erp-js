@@ -77,41 +77,24 @@
     h += '<div style="font-size:20px;font-weight:800;color:#f1f5f9;">SonKhang ERP</div>';
     h += '<div style="font-size:12.5px;color:#64748b;margin-top:4px;">v3.5 \u2014 \u0110\u0103ng nh\u1eadp h\u1ec7 th\u1ed1ng</div>';
     h += '</div>';
-    /* Google GSI button — chi render khi da cau hinh GOOGLE_CLIENT_ID */
+    /* Google Login — Blogger co COOP header chặn GSI iframe
+       Giai phap: Custom button, mo popup OAuth truc tiep, KHONG dung GSI iframe/button
+       g_id_onload chi de GSI nhan biet Client ID cho One Tap (neu co), khong render */
     if (_gcid()) {
-      /* Google One Tap / Button
-         Blogger them COOP: same-origin header → block GSI iframe postMessage
-         Fix: dung ux_mode="popup" voi itp_support="true" + FedCM
-         Neu van loi → fallback sang button mo window moi */
       h += '<div id="g_id_onload"'
         + ' data-client_id="' + _gcid() + '"'
         + ' data-callback="_authGoogleCallback"'
         + ' data-auto_prompt="false"'
-        + ' data-itp_support="true"'
         + '></div>';
-      h += '<div id="sk-google-btn" style="margin-bottom:18px;">';
-      h += '<div class="g_id_signin"'
-        + ' data-type="standard"'
-        + ' data-theme="filled_black"'
-        + ' data-size="large"'
-        + ' data-width="360"'
-        + ' data-text="signin_with"'
-        + ' data-shape="rectangular"'
-        + ' data-logo_alignment="left"'
-        + '></div>';
-      h += '</div>';
-      /* Fallback button - dung CSS class thay inline onmouseover/onmouseout */
-      h += '<div id="sk-google-fallback" style="display:none;margin-bottom:18px;">';
       h += '<button class="sk-google-fallback-btn" onclick="_authGoogleFallback()">'
-        + '<svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">'
+        + '<svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0">'
         + '<path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>'
         + '<path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>'
         + '<path fill="#fbbc05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>'
         + '<path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>'
         + '</svg>'
         + 'Đăng nhập bằng Google</button>';
-      h += '</div>';
-      h += '<div class="sk-auth-divider"><span>ho\u1eb7c \u0111\u0103ng nh\u1eadp b\u1eb1ng m\u1eadt kh\u1ea9u</span></div>';
+      h += '<div class="sk-auth-divider"><span>hoặc đăng nhập bằng mật khẩu</span></div>';
     }
     /* Error box */
     h += '<div id="sk-login-err" class="sk-auth-err" style="display:none;margin-bottom:14px;"></div>';
@@ -519,16 +502,7 @@
     var s=document.createElement('script'); s.id='sk-gsi-script';
     s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
     document.head.appendChild(s);
-    /* Sau 3s: neu GSI chua render duoc button (COOP block) → show fallback */
-    setTimeout(function() {
-      var gsiBtn = document.querySelector('.g_id_signin iframe');
-      var fallback = document.getElementById('sk-google-fallback');
-      var gsiWrap  = document.getElementById('sk-google-btn');
-      if (!gsiBtn && fallback) {
-        fallback.style.display = 'block';
-        if (gsiWrap) gsiWrap.style.display = 'none';
-      }
-    }, 3000);
+    /* COOP fix: Custom button thay GSI iframe, khong can detect */
   }
 
   function _authGoogleFallback() {

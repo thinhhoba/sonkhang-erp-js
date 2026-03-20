@@ -445,17 +445,6 @@
   }
   window.skUpdateBreadcrumb = updateBreadcrumb;
 
-  // Hook vào skLoad
-  var _origSkLoad = window.skLoad;
-  window.skLoad = function(page, navEl) {
-    if (_origSkLoad) _origSkLoad(page, navEl);
-    updateBreadcrumb(page);
-    _updateActiveMenu(page);
-    // Cập nhật title tab
-    var info = _breadcrumbMap[page];
-    if (info) document.title = info.label + ' · SonKhang ERP';
-  };
-
   function _updateActiveMenu(page) {
     // Highlight đúng group trong mega menu
     document.querySelectorAll('.mmn-group').forEach(function(g) {
@@ -538,7 +527,30 @@
   }
 
   /* ================================================================
-   * 5. SYNC USER INFO từ skUpdateUser
+   * 5. HOOK skLoad — polling pattern (không race với DOMContentLoaded)
+   * ================================================================ */
+  var _skLoadHooked = false;
+  function _hookSkLoad() {
+    if (_skLoadHooked || typeof window.skLoad !== 'function') return;
+    _skLoadHooked = true;
+    var _orig = window.skLoad;
+    window.skLoad = function(page, navEl) {
+      _orig(page, navEl);
+      updateBreadcrumb(page);
+      _updateActiveMenu(page);
+      var info = _breadcrumbMap[page];
+      if (info) document.title = info.label + ' · SonKhang ERP';
+      document.querySelectorAll('.bn-item').forEach(function(b) {
+        b.classList.toggle('active', b.id === 'bn-' + page);
+      });
+    };
+  }
+  _hookSkLoad();
+  setTimeout(_hookSkLoad, 400);
+  setTimeout(_hookSkLoad, 1200);
+
+  /* ================================================================
+   * 6. SYNC USER INFO từ skUpdateUser
    * ================================================================ */
   var _origSkUpdateUser = window.skUpdateUser;
   window.skUpdateUser = function(user) {

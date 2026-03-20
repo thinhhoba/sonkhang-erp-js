@@ -7,6 +7,28 @@
   'use strict';
 
   var _api   = function () { return typeof window.api==='function'?window.api:typeof api==='function'?api:null; };
+
+  /* Modal tự build - không phụ thuộc sk-sales-ui.js */
+  function _soModal(html, size) {
+    _soCloseModal();
+    var ov = document.createElement('div');
+    ov.id = 'sk-sales-modal';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg2,#0f1117);border:1px solid var(--border2,#252d40);border-radius:18px;max-height:90vh;overflow-y:auto;width:100%;max-width:'+(size==='lg'?'820px':size==='xl'?'1100px':'560px')+';';
+    box.innerHTML = html;
+    ov.appendChild(box);
+    ov.addEventListener('click', function(e){ if(e.target===ov) _soCloseModal(); });
+    document.body.appendChild(ov);
+    /* Sync voi window.showSalesModal neu co */
+    if (typeof window.showSalesModal === 'function') window.showSalesModal = _soModal;
+  }
+  function _soCloseModal() {
+    var el = document.getElementById('sk-sales-modal');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+  window.showSalesModal  = _soModal;
+  window.closeSalesModal = _soCloseModal;
   var _esc   = function (s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
   var _gv    = function (id) { var e=document.getElementById(id); return e?e.value:''; };
   var _toast = function (m,t) { if(typeof window._hrmToast==='function') window._hrmToast(m,t||'ok'); };
@@ -183,7 +205,7 @@
       + '<button class="btn-ghost" onclick="_sapoTestConn()" style="font-size:12px;">🔍 Test kết nối</button>'
       + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu & Đồng bộ</button>'
       + '</div>';
-    window.showSalesModal ? window.showSalesModal(html) : null;
+    _soModal(html);
   }
   window._soShowSapoConfig = _soShowSapoConfig;
 
@@ -208,7 +230,7 @@
       + '<button class="btn-ghost" onclick="closeSalesModal()">Đóng</button>'
       + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu config</button>'
       + '</div>';
-    window.showSalesModal ? window.showSalesModal(html) : null;
+    _soModal(html);
   }
 
   function _sapoTestConn() {

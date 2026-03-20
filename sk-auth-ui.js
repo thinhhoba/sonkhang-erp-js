@@ -66,7 +66,8 @@
   function _renderLoginPage() {
     var ct = getContent(); if (!ct) return;
     ct.innerHTML = _loginHtml();
-    _loadGSI();
+    /* KHONG load GSI script - GSI iframe bi COOP block gay Maximum call stack
+       Custom button _authGoogleFallback() xu ly OAuth qua popup + BroadcastChannel */
   }
 
   function _loginHtml() {
@@ -81,11 +82,7 @@
        Giai phap: Custom button, mo popup OAuth truc tiep, KHONG dung GSI iframe/button
        g_id_onload chi de GSI nhan biet Client ID cho One Tap (neu co), khong render */
     if (_gcid()) {
-      h += '<div id="g_id_onload"'
-        + ' data-client_id="' + _gcid() + '"'
-        + ' data-callback="_authGoogleCallback"'
-        + ' data-auto_prompt="false"'
-        + '></div>';
+      /* g_id_onload da xoa - GSI script bi COOP block, dung custom OAuth popup */
       h += '<button class="sk-google-fallback-btn" onclick="_authGoogleFallback()">'
         + '<svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0">'
         + '<path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>'
@@ -496,13 +493,11 @@
    * S6 - GOOGLE GSI LOADER
    * ============================================================ */
   function _loadGSI() {
-    /* Chi load GSI script khi da cau hinh GOOGLE_CLIENT_ID */
-    if (!_gcid()) return;
-    if(document.getElementById('sk-gsi-script'))return;
-    var s=document.createElement('script'); s.id='sk-gsi-script';
-    s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
-    document.head.appendChild(s);
-    /* COOP fix: Custom button thay GSI iframe, khong can detect */
+    /* DA VO HIEU HOA: GSI script (accounts.google.com/gsi/client)
+       gay Maximum call stack khi Blogger co COOP: same-origin header
+       GSI tu retry postMessage → vong lap vo tan trong GSI internal code
+       Thay the bang: custom button → popup OAuth → BroadcastChannel */
+    return;
   }
 
   function _authGoogleFallback() {

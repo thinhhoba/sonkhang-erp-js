@@ -1,851 +1,1564 @@
-/**
+/* ================================================================
  * sk-vehicle.js — SonKhang ERP v3.5
- * Module: Qu\u1ea3n l\u00fd Ph\u01b0\u01a1ng ti\u1ec7n (Vehicle Management)
- * CDN: https://thinhhoba.github.io/sonkhang-erp-js/sk-vehicle.js
- * 
- * QUY \u01af\u1edcC:
- * - Ch\u1ec9 d\u00f9ng var (kh\u00f4ng let/const) — CDATA-safe cho Blogger XML
- * - Ti\u1ebfng Vi\u1ec7t d\u00f9ng Unicode escape
- * - Emoji d\u00f9ng HTML entity (&#xHEX;)
- * - T\u1ea5t c\u1ea3 h\u00e0m public expose ra window.*
- * 
- * Ph\u1ee5 thu\u1ed9c: api(), getContent() t\u1eeb theme XML
- * 
- * Ng\u00e0y: 19/03/2026
- * Ki\u1ebfn tr\u00fac s\u01b0: Claude Opus 4.6
- */
-(function(){
+ * Module Qu\u1ea3n l\u00fd Ph\u01b0\u01a1ng ti\u1ec7n — SKILL SK-LOG-002 v2.2
+ * T\u00e1c gi\u1ea3  : Claude Sonnet 4.6
+ * Ng\u00e0y     : 20/03/2026
+ * N\u00e2ng c\u1ea5p:
+ *   [1] Card xe: Glow theo tr\u1ea1ng th\u00e1i + progress bar b\u1ea3o d\u01b0\u1ee1ng
+ *   [2] Tab X\u0103ng: Toll Fee dropdown + breakdown chart \u0111\u1ea7y \u0111\u1ee7
+ *   [3] Tab L\u1ec7nh: Click \u0111\u01a1n Sapo → t\u1ef1 \u0111i\u1ec1n form + \u01b0\u1edbc t\u00ednh ph\u00ed
+ *   [4] Ho\u00e0n th\u00e0nh: Modal t\u00f3m t\u1eaft chi ph\u00ed tr\u01b0\u1edbc khi t\u1ea1o phi\u1ebfu chi
+ *
+ * QUY T\u1eaec B\u1eaet BU\u1ed8C:
+ *   - Ch\u1ec9 d\u00f9ng var, kh\u00f4ng let/const (Blogger XML parse)
+ *   - Ti\u1ebfng Vi\u1ec7t trong string JS = Unicode escape
+ *   - API POST Content-Type: text/plain (CORS fix)
+ *   - To\u00e0n b\u1ed9 g\u00f3i trong IIFE, expose h\u00e0m ra window
+ *
+ * DEPLOY: GitHub thinhhoba/sonkhang-erp-js → commit file n\u00e0y
+ *         \u0110\u1ee3i ~2 ph\u00fat → F12 Console: loadVehicle() \u0111\u1ec3 test
+ * ================================================================ */
+
+(function () {
   'use strict';
 
-  // ============================================================
-  // STATE
-  // ============================================================
-  var _veh = {
-    tab: 'ds',
-    loading: false,
-    registry: [],
-    alerts: [],
-    drivers: [],
-    editPlate: null
-  };
-  window._veh = _veh;
-
-  // Gi\u00e1 x\u0103ng m\u1eb7c \u0111\u1ecbnh (client-side, sync v\u1edbi GAS)
-  var FUEL_PRICES = {
-    'xang_ron95': 25170,
-    'xang_ron92': 23810,
-    'dau_diesel': 21550
-  };
-
-  var VEH_TYPES = {
-    'xe_tai': 'Xe t\u1ea3i',
-    'xe_may': 'Xe m\u00e1y',
-    'xe_lanh': 'Xe l\u1ea1nh'
-  };
-
-  var FUEL_TYPES = {
-    'xang_ron95': 'X\u0103ng RON 95',
-    'xang_ron92': 'X\u0103ng RON 92',
-    'dau_diesel': 'D\u1ea7u Diesel'
-  };
-
-  var STATUS_MAP = {
-    'san_sang':  {label: 'S\u1eb5n s\u00e0ng',  color: 'var(--sk-green)'},
-    'dang_giao': {label: '\u0110ang giao', color: 'var(--sk-blue)'},
-    'bao_duong': {label: 'B\u1ea3o d\u01b0\u1ee1ng', color: 'var(--sk-yellow)'},
-    'ngung':     {label: 'Ng\u01b0ng',     color: 'var(--sk-red)'}
-  };
-
-  // ============================================================
-  // HELPERS
-  // ============================================================
-  function esc(s) {
-    if (!s) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  /* ============================================================
+   * S0 — STATE
+   * ============================================================ */
+  if (!window._veh) {
+    window._veh = {
+      tab:               'ds',
+      loading:           false,
+      registry:          [],
+      alerts:            [],
+      drivers:           [],
+      kpi:               {},
+      fuelPrices:        null,
+      fuelPricesDefault: false
+    };
   }
 
-  function fmtNum(n) {
-    return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  }
+  /* Gi\u00e1 x\u0103ng FALLBACK (ch\u1ec9 d\u00f9ng khi GAS Config kh\u00f4ng ph\u1ea3n h\u1ed3i) */
+  var _FUEL_DEFAULT = { xang_ron95: 25170, xang_ron92: 23810, dau_diesel: 21550 };
 
-  function fmtDate(d) {
-    if (!d) return '-';
-    var dt = new Date(d);
-    if (isNaN(dt.getTime())) return String(d);
-    var dd = String(dt.getDate()).padStart(2, '0');
-    var mm = String(dt.getMonth() + 1).padStart(2, '0');
-    return dd + '/' + mm + '/' + dt.getFullYear();
-  }
+  /* Presets c\u1ea7u \u0111\u01b0\u1eddng ph\u1ed5 bi\u1ebfn tuy\u1ebfn HCM */
+  var _TOLL_PRESETS = [
+    { label: '-- Ch\u1ecdn nhanh c\u1ea7u \u0111\u01b0\u1eddng --',   val: 0      },
+    { label: 'C\u1ea7u B\u00ecnh Tri\u1ec7u (1 chi\u1ec1u)',           val: 15000  },
+    { label: 'C\u1ea7u B\u00ecnh Tri\u1ec7u (kh\u1ee9 h\u1ed3i)',      val: 30000  },
+    { label: 'C\u1ea7u Ph\u00fa M\u1ef9 (1 chi\u1ec1u)',              val: 38000  },
+    { label: 'C\u1ea7u Ph\u00fa M\u1ef9 (kh\u1ee9 h\u1ed3i)',         val: 76000  },
+    { label: 'Tr\u1ea1m An S\u01b0\u01a1ng (1 chi\u1ec1u)',           val: 35000  },
+    { label: 'Tr\u1ea1m An S\u01b0\u01a1ng (kh\u1ee9 h\u1ed3i)',      val: 70000  },
+    { label: 'H\u1ea7m \u0110\u1eb9o H\u1ea3i V\u00e2n (1 chi\u1ec1u)', val: 60000 },
+    { label: 'Cao t\u1ed1c HCM \u2013 Long Th\u00e0nh',              val: 45000  },
+    { label: 'Cao t\u1ed1c HCM \u2013 Th\u1ee7 D\u1ea7u M\u1ed9t',   val: 52000  },
+    { label: 'Nh\u1eadp s\u1ed1 kh\u00e1c...',                       val: -1     }
+  ];
 
-  function getEl(id) { return document.getElementById(id); }
+  /* ============================================================
+   * S1 — ENTRY POINTS
+   * ============================================================ */
 
-  function toast(msg, type) {
-    // Simple toast — d\u00f9ng alert fallback, sau n\u00e0y upgrade
-    alert(msg);
-  }
-
-  // ============================================================
-  // MAIN LOADER
-  // ============================================================
   function loadVehicle() {
     var ct = getContent();
     if (!ct) return;
-
-    var h = '<div class="sk-panel" style="padding:24px">';
-    h += '<div class="sk-pt" style="display:flex;align-items:center;justify-content:space-between">';
-    h += '<span>&#x1F69A; Qu\u1ea3n l\u00fd Ph\u01b0\u01a1ng ti\u1ec7n</span>';
-    h += '</div>';
-
-    // Tab buttons
-    h += '<div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap">';
-    var tabs = [
-      {id:'ds',     icon:'&#x1F697;', label:'Danh s\u00e1ch xe'},
-      {id:'cost',   icon:'&#x26FD;',  label:'T\u00ednh chi ph\u00ed x\u0103ng'},
-      {id:'dispatch', icon:'&#x1F4E6;', label:'L\u1ec7nh \u0111i\u1ec1u xe'},
-      {id:'report', icon:'&#x1F4C8;', label:'B\u00e1o c\u00e1o th\u00e1ng'}
-    ];
-    for (var t = 0; t < tabs.length; t++) {
-      var isActive = _veh.tab === tabs[t].id;
-      h += '<button class="sk-btn" style="'
-        + (isActive ? 'background:var(--sk-blue);' : 'background:transparent;border:1px solid #374151;')
-        + 'font-size:13px;padding:6px 14px" '
-        + 'onclick="_vehTab(\'' + tabs[t].id + '\')">'
-        + tabs[t].icon + ' ' + tabs[t].label + '</button>';
-    }
-    h += '</div>';
-
-    h += '<div id="veh-content"></div>';
-    h += '</div>';
-
-    ct.innerHTML = h;
+    window._veh.loading = false;
+    ct.innerHTML = _shell();
     _vehRender();
   }
 
-  function _vehTab(t) {
-    _veh.tab = t;
-    // Re-render tabs highlight
-    loadVehicle();
+  function loadPhuongTien() { loadVehicle(); }
+
+  /* ============================================================
+   * S2 — SHELL + TAB BAR
+   * ============================================================ */
+
+  function _shell() {
+    var h = '';
+    h += '<div class="sk-panel" style="padding:0;overflow:hidden;min-height:520px;">';
+    h += '<div class="sk-veh-tabbar" id="veh-tabbar">';
+    h += _tabBtn('ds',   '&#x1F697;', 'Danh s\u00e1ch xe',      true);
+    h += _tabBtn('xang', '&#x26FD;',  'Chi ph\u00ed x\u0103ng',  false);
+    h += _tabBtn('lenh', '&#x1F4CB;', 'L\u1ec7nh \u0111i\u1ec1u xe',   false);
+    h += _tabBtn('bc',   '&#x1F4CA;', 'B\u00e1o c\u00e1o th\u00e1ng', false);
+    h += '</div>';
+    h += '<div id="veh-body" style="padding:22px 24px 32px;">';
+    h += _skelBlock();
+    h += '</div>';
+    h += '</div>';
+    return h;
   }
+
+  function _tabBtn(id, icon, label, active) {
+    return '<button class="sk-veh-tab' + (active ? ' active' : '') + '"'
+      + ' id="veh-tb-' + id + '" onclick="_vehTab(\'' + id + '\')">'
+      + icon + ' ' + label + '</button>';
+  }
+
+  function _vehTab(tab) {
+    window._veh.tab = tab;
+    var all = ['ds', 'xang', 'lenh', 'bc'];
+    for (var i = 0; i < all.length; i++) {
+      var b = document.getElementById('veh-tb-' + all[i]);
+      if (b) b.className = 'sk-veh-tab' + (all[i] === tab ? ' active' : '');
+    }
+    if (tab === 'ds')   _vehRender();
+    if (tab === 'xang') _calcRender();
+    if (tab === 'lenh') _lenhRender();
+    if (tab === 'bc')   _bcRender();
+  }
+
+  function _body() { return document.getElementById('veh-body'); }
+
+  /* ============================================================
+   * S3 — TAB DS: DANH S\u00c1CH XE
+   * ============================================================ */
 
   function _vehRender() {
-    var st = _veh;
+    var st = window._veh;
     if (st.loading) return;
-    if (st.tab === 'ds') _vehRenderRegistry();
-    else if (st.tab === 'cost') _vehRenderCostCalc();
-    else if (st.tab === 'dispatch') _vehRenderDispatch();
-    else if (st.tab === 'report') _vehRenderReport();
-  }
+    st.loading = true;
+    var b = _body();
+    if (b) b.innerHTML = _skelBlock();
 
-  // ============================================================
-  // TAB 1: DANH S\u00c1CH XE (Cards)
-  // ============================================================
-  function _vehRenderRegistry() {
-    var el = getEl('veh-content');
-    if (!el) return;
-    _veh.loading = true;
-    el.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af">&#x23F3; \u0110ang t\u1ea3i danh s\u00e1ch xe...</div>';
-
-    api('veh_get_registry', {}, function(err, d) {
-      _veh.loading = false;
-      var el = getEl('veh-content');
-      if (!el) return;
+    api('veh_get_registry', {}, function (err, d) {
+      st.loading = false;
+      var b2 = _body();
+      if (!b2) return;
       if (err || !d || !d.ok) {
-        el.innerHTML = '<div style="color:var(--sk-red);padding:20px">L\u1ed7i: ' + (d ? d.error : String(err)) + '</div>';
+        b2.innerHTML = _errBox(d && d.error);
         return;
       }
-      _veh.registry = d.vehicles || [];
-      _veh.alerts = d.alerts || [];
-
-      var h = '';
-
-      // ---- Alerts ----
-      if (_veh.alerts.length > 0) {
-        h += '<div style="margin-bottom:16px">';
-        for (var i = 0; i < _veh.alerts.length; i++) {
-          var a = _veh.alerts[i];
-          var color = a.type === 'danger' ? 'var(--sk-red)' : 'var(--sk-yellow)';
-          h += '<div style="padding:8px 12px;margin:4px 0;border-left:3px solid ' + color
-            + ';background:rgba(255,255,255,0.03);border-radius:4px;font-size:13px">'
-            + '<strong>' + esc(a.plate) + '</strong>: ' + esc(a.msg) + '</div>';
-        }
-        h += '</div>';
-      }
-
-      // ---- Toolbar ----
-      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-      h += '<span style="font-size:13px;color:#6b7280">' + _veh.registry.length + ' xe</span>';
-      h += '<button class="sk-btn" style="font-size:13px" onclick="_vehShowForm(null)">+ Th\u00eam xe m\u1edbi</button>';
-      h += '</div>';
-
-      // ---- Vehicle Cards ----
-      if (_veh.registry.length === 0) {
-        h += '<div style="text-align:center;color:#6b7280;padding:60px 20px">'
-          + '<div style="font-size:48px;margin-bottom:12px">&#x1F697;</div>'
-          + 'Ch\u01b0a c\u00f3 xe n\u00e0o trong h\u1ec7 th\u1ed1ng.<br>'
-          + 'Nh\u1ea5n <strong>"+ Th\u00eam xe m\u1edbi"</strong> \u0111\u1ec3 b\u1eaft \u0111\u1ea7u.'
-          + '</div>';
-      } else {
-        h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">';
-        for (var i = 0; i < _veh.registry.length; i++) {
-          h += _vehCardHTML(_veh.registry[i]);
-        }
-        h += '</div>';
-      }
-
-      el.innerHTML = h;
+      st.registry = d.data   || [];
+      st.alerts   = d.alerts || [];
+      st.kpi      = d.kpi    || {};
+      b2.innerHTML = _dsHtml();
     });
   }
 
-  function _vehCardHTML(v) {
-    var st = STATUS_MAP[v.status] || STATUS_MAP['san_sang'];
-    var typeName = VEH_TYPES[v.type] || v.type;
-    var fuelName = FUEL_TYPES[v.fuel_type] || v.fuel_type;
+  function _dsHtml() {
+    var st  = window._veh;
+    var kpi = st.kpi;
+    var h   = '';
 
-    var h = '<div class="sk-panel" style="padding:16px;position:relative">';
-
-    // Status badge
-    h += '<div style="position:absolute;top:12px;right:12px;padding:2px 10px;border-radius:12px;'
-      + 'font-size:11px;font-weight:600;background:' + st.color + ';color:#fff">' + st.label + '</div>';
-
-    // Plate
-    h += '<div style="font-size:20px;font-weight:700;color:var(--sk-blue);letter-spacing:1px">'
-      + esc(v.plate) + '</div>';
-
-    // Type + fuel
-    h += '<div style="font-size:12px;color:#9ca3af;margin:4px 0">'
-      + esc(typeName) + ' &#x2022; ' + esc(fuelName) + '</div>';
-
-    // Info rows
-    h += '<div style="margin:12px 0;font-size:13px;color:#d1d5db;line-height:1.8">';
-    h += '&#x1F464; ' + esc(v.driver_name || 'Ch\u01b0a g\u00e1n t\u00e0i x\u1ebf') + '<br>';
-    h += '&#x26FD; \u0110\u1ecbnh m\u1ee9c: <strong>' + v.fuel_quota + ' L/100km</strong><br>';
-    h += '&#x1F4CF; Odometer: <strong>' + fmtNum(v.odometer) + ' km</strong><br>';
-    h += '&#x1F3CB; T\u1ea3i tr\u1ecdng: ' + fmtNum(v.load_capacity) + ' kg';
+    /* KPI strip */
+    h += '<div class="sk-g5" style="margin-bottom:20px;">';
+    h += _kpiBox('#3b82f6', 'T\u1ed5ng xe',         kpi.total     || 0, 'trong \u0111\u1ed9i');
+    h += _kpiBox('#10b981', 'S\u1eb5n s\u00e0ng',   kpi.san_sang  || 0, 'c\u00f3 th\u1ec3 \u0111i\u1ec1u');
+    h += _kpiBox('#f97316', '\u0110ang giao',        kpi.dang_giao || 0, 'chuy\u1ebfn');
+    h += _kpiBox('#f59e0b', 'B\u1ea3o d\u01b0\u1ee1ng', kpi.bao_duong || 0, 'xe');
+    h += _kpiBox('#ef4444', 'C\u1ea3nh b\u00e1o',   st.alerts.length, '\u0111i\u1ec3m c\u1ea7n x\u1eed l\u00fd');
     h += '</div>';
 
-    // Dates
-    h += '<div style="font-size:11px;color:#6b7280;margin-bottom:12px">';
-    h += '\u0110K: ' + fmtDate(v.registration_exp) + ' &#x2022; BH: ' + fmtDate(v.insurance_exp);
+    /* Alert banner */
+    if (st.alerts.length > 0) {
+      h += '<div class="sk-veh-alert-bar" style="margin-bottom:18px;">';
+      h += '<div style="font-weight:600;color:#f59e0b;margin-bottom:6px;">'
+        + '&#x26A0;&#xFE0F; C\u1ea3nh b\u00e1o h\u1ec7 th\u1ed1ng (' + st.alerts.length + ' \u0111i\u1ec3m)</div>';
+      var show = st.alerts.slice(0, 5);
+      for (var a = 0; a < show.length; a++) {
+        var al  = show[a];
+        var alc = al.type && al.type.indexOf('expired') >= 0 ? '#ef4444' : '#f59e0b';
+        h += '<div style="color:' + alc + ';font-size:12.5px;padding:2px 0;">'
+          + '&#x25CF; [' + al.plate + '] ' + al.label + '</div>';
+      }
+      if (st.alerts.length > 5) {
+        h += '<div style="color:#64748b;font-size:11.5px;margin-top:4px;">'
+          + '...v\u00e0 ' + (st.alerts.length - 5) + ' c\u1ea3nh b\u00e1o kh\u00e1c</div>';
+      }
+      h += '</div>';
+    }
+
+    /* Header row */
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+    h += '<span style="font-size:15px;font-weight:700;color:#e2e8f0;">'
+      + '&#x1F697; \u0110\u1ed9i ph\u01b0\u01a1ng ti\u1ec7n</span>';
+    h += '<button class="sk-btn" onclick="_vehOpenForm(null)" style="padding:8px 18px;font-size:12.5px;">'
+      + '+ Th\u00eam xe m\u1edbi</button>';
     h += '</div>';
 
-    // Actions
-    h += '<div style="display:flex;gap:6px">';
-    h += '<button class="sk-btn" style="font-size:12px;padding:5px 12px" '
-      + 'onclick="_vehShowForm(\'' + esc(v.plate) + '\')">&#x270F; S\u1eeda</button>';
-    h += '<button class="sk-btn" style="font-size:12px;padding:5px 12px;background:var(--sk-green)" '
-      + 'onclick="_vehQuickCalc(\'' + esc(v.plate) + '\')">&#x26FD; T\u00ednh x\u0103ng</button>';
+    if (st.registry.length === 0) {
+      h += _emptyBox('&#x1F697;', 'Ch\u01b0a c\u00f3 ph\u01b0\u01a1ng ti\u1ec7n n\u00e0o',
+        'Nh\u1ea5n \u201cTh\u00eam xe m\u1edbi\u201d \u0111\u1ec3 b\u1eaft \u0111\u1ea7u');
+      return h;
+    }
+
+    h += '<div class="sk-veh-grid">';
+    for (var i = 0; i < st.registry.length; i++) {
+      h += _vehicleCard(st.registry[i]);
+    }
+    h += '</div>';
+    return h;
+  }
+
+  /* ---- NÂNG CẤP [1]: Card xe với Glow + Progress bar bảo dưỡng ---- */
+  function _vehicleCard(v) {
+    var sc   = _statusColor(v.status);
+
+    /* Tính % bảo dưỡng còn lại */
+    var maintPct  = 0;
+    var maintLeft = 0;
+    var maintColor = '#10b981';
+    if (v.maint_km && v.odometer && v.maint_km > 0) {
+      /* Giả sử chu kỳ bảo dưỡng 10.000 km */
+      var cycle    = 10000;
+      var lastMaint = v.maint_km - cycle;
+      if (lastMaint < 0) lastMaint = 0;
+      var driven   = v.odometer - lastMaint;
+      maintPct  = Math.min(100, Math.round(driven / cycle * 100));
+      maintLeft = v.maint_km - v.odometer;
+      if (maintLeft < 0)    { maintColor = '#ef4444'; }
+      else if (maintLeft < 500) { maintColor = '#f59e0b'; }
+      else                  { maintColor = '#10b981'; }
+    }
+
+    var h = '';
+    /* Glow box-shadow theo màu trạng thái */
+    h += '<div class="sk-veh-card" style="'
+      + 'border-top:3px solid ' + sc + ';'
+      + 'box-shadow:0 0 0 1px rgba(0,0,0,.3), 0 8px 32px rgba(0,0,0,.4), 0 0 24px ' + sc + '18;'
+      + '">';
+
+    /* Header: biển số + badge */
+    h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+    h += '<div>';
+    h += '<div style="font-size:18px;font-weight:800;color:#f1f5f9;letter-spacing:.6px;">'
+      + v.plate + '</div>';
+    h += '<div style="font-size:11.5px;color:#64748b;margin-top:3px;">'
+      + _typeIcon(v.type) + ' ' + _typeName(v.type) + '</div>';
+    h += '</div>';
+    h += _statusBadge(v.status);
+    h += '</div>';
+
+    /* Thông tin chi tiết */
+    h += '<div class="sk-veh-info">';
+    h += _infoRow('&#x1F464;', 'T\u00e0i x\u1ebf',
+      v.driver_name || (v.driver_email ? v.driver_email.split('@')[0] : '\u2014'));
+    h += _infoRow('&#x26FD;', '\u0110\u1ecbnh m\u1ee9c x\u0103ng',
+      (v.fuel_quota || '?') + ' L/100km'
+      + ' <small style="color:#64748b;font-size:11px;">(' + _fuelName(v.fuel_type) + ')</small>');
+    h += _infoRow('&#x1F4CF;', 'Odometer',
+      '<strong style="font-variant-numeric:tabular-nums;">'
+      + _num(v.odometer) + '</strong> km');
+    h += _infoRow('&#x1F4E6;', 'T\u1ea3i tr\u1ecdng', _num(v.load_capacity_kg) + ' kg');
+
+    /* Đăng kiểm có màu cảnh báo */
+    var rc = _daysColor(v.reg_status);
+    var rv = v.registration_exp
+      ? '<span style="color:' + rc + ';">' + _fmtDate(v.registration_exp)
+        + (v.reg_days !== null
+          ? ' <small>(' + (v.reg_days < 0 ? 'H\u1ebft h\u1ea1n' : 'C\u00f2n ' + v.reg_days + ' ng\u00e0y') + ')</small>'
+          : '') + '</span>'
+      : '\u2014';
+    h += _infoRow('&#x1F4C5;', '\u0110\u0103ng ki\u1ec3m', rv);
+
+    /* Bảo hiểm có màu cảnh báo */
+    var ic = _daysColor(v.ins_status);
+    var iv = v.insurance_exp
+      ? '<span style="color:' + ic + ';">' + _fmtDate(v.insurance_exp)
+        + (v.ins_days !== null
+          ? ' <small>(' + (v.ins_days < 0 ? 'H\u1ebft h\u1ea1n' : 'C\u00f2n ' + v.ins_days + ' ng\u00e0y') + ')</small>'
+          : '') + '</span>'
+      : '\u2014';
+    h += _infoRow('&#x1F6E1;', 'B\u1ea3o hi\u1ec3m', iv);
+
+    if (v.area) h += _infoRow('&#x1F4CD;', 'Khu v\u1ef1c', v.area);
+    h += '</div>';
+
+    /* Progress bar bảo dưỡng [NÂNG CẤP] */
+    if (v.maint_km && v.odometer) {
+      h += '<div class="sk-veh-maint-wrap">';
+      h += '<div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px;">';
+      h += '<span style="color:#64748b;">&#x1F527; B\u1ea3o d\u01b0\u1ee1ng</span>';
+      h += '<span style="color:' + maintColor + ';font-weight:600;">';
+      if (maintLeft < 0) {
+        h += 'Qu\u00e1 h\u1ea1n ' + _num(Math.abs(maintLeft)) + ' km!';
+      } else {
+        h += 'C\u00f2n ' + _num(maintLeft) + ' km';
+      }
+      h += '</span>';
+      h += '</div>';
+      h += '<div class="sk-veh-maint-bg">';
+      h += '<div class="sk-veh-maint-fill" style="width:' + maintPct + '%;background:' + maintColor + ';"></div>';
+      h += '</div>';
+      h += '<div style="font-size:10.5px;color:#475569;margin-top:3px;text-align:right;">'
+        + 'Odometer: ' + _num(v.odometer) + ' / M\u1ed1c: ' + _num(v.maint_km) + ' km</div>';
+      h += '</div>';
+    }
+
+    /* Cảnh báo riêng của xe */
+    var myAlerts = [];
+    var allA = window._veh.alerts || [];
+    for (var j = 0; j < allA.length; j++) {
+      if (allA[j].plate === v.plate) myAlerts.push(allA[j]);
+    }
+    if (myAlerts.length > 0) {
+      h += '<div class="sk-veh-card-warn">';
+      for (var k = 0; k < myAlerts.length; k++) {
+        var wc = myAlerts[k].type && myAlerts[k].type.indexOf('expired') >= 0 ? '#ef4444' : '#f59e0b';
+        h += '<div style="color:' + wc + ';font-size:11.5px;padding:2px 0;">'
+          + '&#x26A0; ' + myAlerts[k].label + '</div>';
+      }
+      h += '</div>';
+    }
+
+    /* Nút hành động */
+    h += '<div class="sk-veh-card-actions">';
+    h += '<button class="sk-btn-sm sk-btn-outline" onclick="_vehOpenForm(\'' + _esc(v.plate) + '\')">'
+      + '&#x270F;&#xFE0F; Ch\u1ec9nh s\u1eeda</button>';
+    if (v.status === 'san_sang') {
+      h += '<button class="sk-btn-sm" style="background:linear-gradient(135deg,#10b981,#059669);" '
+        + 'onclick="_dispatchOpen(\'' + _esc(v.plate) + '\')">'
+        + '&#x1F4CB; \u0110i\u1ec1u xe</button>';
+    }
+    if (v.status === 'dang_giao') {
+      h += '<button class="sk-btn-sm" style="background:linear-gradient(135deg,#f97316,#ea580c);" '
+        + 'onclick="_completeOpen(\'' + _esc(v.plate) + '\')">'
+        + '&#x2705; Ho\u00e0n th\u00e0nh</button>';
+    }
+    if (v.status === 'bao_duong') {
+      h += '<button class="sk-btn-sm" style="background:linear-gradient(135deg,#f59e0b,#d97706);" '
+        + 'onclick="_vehOpenForm(\'' + _esc(v.plate) + '\')">'
+        + '&#x1F527; C\u1eadp nh\u1eadt</button>';
+    }
     h += '</div>';
 
     h += '</div>';
     return h;
   }
 
-  // ============================================================
-  // FORM TH\u00caM / S\u1eeca XE (Modal)
-  // ============================================================
-  function _vehShowForm(plate) {
-    var isEdit = !!plate;
-    var v = null;
+  function _infoRow(icon, label, val) {
+    return '<div class="sk-veh-info-row">'
+      + '<span style="color:#64748b;font-size:12px;flex-shrink:0;">' + icon + ' ' + label + '</span>'
+      + '<span style="color:#cbd5e1;font-size:12.5px;text-align:right;word-break:break-word;">' + val + '</span>'
+      + '</div>';
+  }
 
-    if (isEdit) {
-      for (var i = 0; i < _veh.registry.length; i++) {
-        if (_veh.registry[i].plate === plate) { v = _veh.registry[i]; break; }
+  /* ============================================================
+   * S4 — FORM THÊM/SỬA XE (Modal)
+   * ============================================================ */
+
+  function _vehOpenForm(plate) {
+    var v = null;
+    if (plate) {
+      var reg = window._veh.registry;
+      for (var i = 0; i < reg.length; i++) {
+        if (reg[i].plate === plate) { v = reg[i]; break; }
       }
     }
-
-    // Load drivers cho dropdown
-    api('veh_get_drivers', {}, function(err, d) {
-      _veh.drivers = (d && d.ok) ? (d.drivers || []) : [];
-      _vehRenderFormModal(isEdit, v);
+    api('veh_get_drivers', {}, function (err, d) {
+      if (!err && d && d.ok) window._veh.drivers = d.data || [];
+      _showVehicleModal(v);
     });
   }
 
-  function _vehRenderFormModal(isEdit, v) {
-    // Remove old modal
-    var old = getEl('veh-modal');
-    if (old) old.remove();
+  function _showVehicleModal(v) {
+    var isNew   = !v;
+    _removeModal('sk-veh-modal');
+    var drivers = window._veh.drivers || [];
 
-    var h = '<div id="veh-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;'
-      + 'background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;'
-      + 'padding:20px" onclick="if(event.target===this)_vehCloseModal()">';
+    var dOpts = '<option value="">-- Ch\u1ecdn t\u00e0i x\u1ebf ph\u1ee5 tr\u00e1ch --</option>';
+    for (var i = 0; i < drivers.length; i++) {
+      var sel = v && v.driver_email === drivers[i].email ? ' selected' : '';
+      dOpts += '<option value="' + _esc(drivers[i].email) + '"' + sel + '>'
+        + _esc(drivers[i].name) + ' (' + drivers[i].role + ')</option>';
+    }
 
-    h += '<div class="sk-panel" style="padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto">';
+    var h = '<div id="sk-veh-modal" class="sk-modal-overlay" onclick="_closeModal(\'sk-veh-modal\',event)">';
+    h += '<div class="sk-modal-box" onclick="event.stopPropagation()">';
 
-    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">';
-    h += '<div class="sk-pt" style="margin:0">'
-      + (isEdit ? '&#x270F; S\u1eeda xe: ' + esc(v.plate) : '&#x2795; Th\u00eam xe m\u1edbi') + '</div>';
-    h += '<button onclick="_vehCloseModal()" style="background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer">&times;</button>';
+    /* Modal header */
+    h += '<div class="sk-modal-hd">';
+    h += isNew ? '&#x1F697; Th\u00eam xe m\u1edbi' : '&#x270F;&#xFE0F; Ch\u1ec9nh s\u1eeda xe: ' + v.plate;
+    h += '<button onclick="_removeModal(\'sk-veh-modal\')" class="sk-modal-close">&times;</button>';
     h += '</div>';
 
-    // Form grid
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    /* Modal body */
+    h += '<div class="sk-modal-bd">';
+    h += '<div class="sk-fg2">';
 
-    // Bi\u1ec3n s\u1ed1
-    h += _field('vf-plate', 'Bi\u1ec3n s\u1ed1 xe *', 'text', v ? v.plate : '', 'VD: 51A-12345', isEdit);
+    /* Biển số + Loại xe */
+    h += '<div><label class="sk-lbl">Bi\u1ec3n s\u1ed1 xe <em style="color:#ef4444;">*</em></label>';
+    h += '<input id="vf_plate" class="sk-inp" type="text" placeholder="51F-123.45"'
+      + (v ? ' value="' + _esc(v.plate) + '" readonly style="opacity:.55"' : '')
+      + ' style="text-transform:uppercase"'
+      + '></div>';
 
-    // Lo\u1ea1i xe
-    h += '<div><label style="font-size:12px;color:#9ca3af">Lo\u1ea1i xe</label>'
-      + '<select id="vf-type" class="sk-inp" style="width:100%">';
-    var types = ['xe_tai', 'xe_may', 'xe_lanh'];
-    for (var t = 0; t < types.length; t++) {
-      var sel = (v && v.type === types[t]) ? ' selected' : '';
-      h += '<option value="' + types[t] + '"' + sel + '>' + VEH_TYPES[types[t]] + '</option>';
-    }
+    h += '<div><label class="sk-lbl">Lo\u1ea1i xe</label>';
+    h += '<select id="vf_type" class="sk-inp">';
+    h += _opt('xe_tai',  'Xe t\u1ea3i',  v && v.type);
+    h += _opt('xe_may',  'Xe m\u00e1y',   v && v.type);
+    h += _opt('xe_lanh', 'Xe l\u1ea1nh',  v && v.type);
     h += '</select></div>';
 
-    // T\u00e0i x\u1ebf (dropdown t\u1eeb User_Database)
-    h += '<div><label style="font-size:12px;color:#9ca3af">T\u00e0i x\u1ebf (role=xe)</label>'
-      + '<select id="vf-driver" class="sk-inp" style="width:100%">'
-      + '<option value="">-- Ch\u01b0a g\u00e1n --</option>';
-    for (var d = 0; d < _veh.drivers.length; d++) {
-      var dr = _veh.drivers[d];
-      var sel = (v && v.driver_email === dr.email) ? ' selected' : '';
-      h += '<option value="' + esc(dr.email) + '"' + sel + '>'
-        + esc(dr.name) + ' (' + esc(dr.email) + ')</option>';
-    }
+    /* Tài xế full-width */
+    h += '<div style="grid-column:1/-1"><label class="sk-lbl">T\u00e0i x\u1ebf ph\u1ee5 tr\u00e1ch</label>';
+    h += '<select id="vf_driver" class="sk-inp">' + dOpts + '</select></div>';
+
+    /* Định mức + Nhiên liệu */
+    h += '<div><label class="sk-lbl">\u0110\u1ecbnh m\u1ee9c x\u0103ng (L/100km)</label>';
+    h += '<input id="vf_quota" class="sk-inp" type="number" step=".1" min="1" max="50"'
+      + ' placeholder="VD: 8.5" value="' + (v ? v.fuel_quota : '') + '"></div>';
+
+    h += '<div><label class="sk-lbl">Lo\u1ea1i nhi\u00ean li\u1ec7u</label>';
+    h += '<select id="vf_ftype" class="sk-inp">';
+    h += _opt('xang_ron95', 'X\u0103ng RON 95', v && v.fuel_type);
+    h += _opt('xang_ron92', 'X\u0103ng RON 92', v && v.fuel_type);
+    h += _opt('dau_diesel', 'D\u1ea7u Diesel',  v && v.fuel_type);
     h += '</select></div>';
 
-    // Lo\u1ea1i nhi\u00ean li\u1ec7u
-    h += '<div><label style="font-size:12px;color:#9ca3af">Nhi\u00ean li\u1ec7u</label>'
-      + '<select id="vf-fueltype" class="sk-inp" style="width:100%">';
-    var ftypes = ['xang_ron92', 'xang_ron95', 'dau_diesel'];
-    for (var f = 0; f < ftypes.length; f++) {
-      var sel = (v && v.fuel_type === ftypes[f]) ? ' selected' : '';
-      h += '<option value="' + ftypes[f] + '"' + sel + '>' + FUEL_TYPES[ftypes[f]] + '</option>';
+    /* Tải trọng + Odometer */
+    h += '<div><label class="sk-lbl">T\u1ea3i tr\u1ecdng t\u1ed1i \u0111a (kg)</label>';
+    h += '<input id="vf_load" class="sk-inp" type="number" placeholder="VD: 1500"'
+      + ' value="' + (v ? v.load_capacity_kg : '') + '"></div>';
+
+    h += '<div><label class="sk-lbl">Odometer hi\u1ec7n t\u1ea1i (km)</label>';
+    h += '<input id="vf_odo" class="sk-inp" type="number" placeholder="VD: 45000"'
+      + ' value="' + (v ? v.odometer : '') + '"></div>';
+
+    /* Mốc bảo dưỡng + Khu vực */
+    h += '<div><label class="sk-lbl">M\u1ed1c b\u1ea3o d\u01b0\u1ee1ng ti\u1ebfp theo (km)</label>';
+    h += '<input id="vf_maint" class="sk-inp" type="number" placeholder="VD: 50000"'
+      + ' value="' + (v ? v.maint_km : '') + '"></div>';
+
+    h += '<div><label class="sk-lbl">Khu v\u1ef1c ho\u1ea1t \u0111\u1ed9ng</label>';
+    h += '<input id="vf_area" class="sk-inp" type="text" placeholder="VD: HCM, B\u00ecnh D\u01b0\u01a1ng"'
+      + ' value="' + _esc(v ? v.area : '') + '"></div>';
+
+    /* Đăng kiểm + Bảo hiểm */
+    h += '<div><label class="sk-lbl">\u0110\u0103ng ki\u1ec3m h\u1ebft h\u1ea1n ng\u00e0y</label>';
+    h += '<input id="vf_reg" class="sk-inp" type="date"'
+      + ' value="' + (v ? v.registration_exp : '') + '"></div>';
+
+    h += '<div><label class="sk-lbl">B\u1ea3o hi\u1ec3m h\u1ebft h\u1ea1n ng\u00e0y</label>';
+    h += '<input id="vf_ins" class="sk-inp" type="date"'
+      + ' value="' + (v ? v.insurance_exp : '') + '"></div>';
+
+    /* Trạng thái (chỉ khi sửa) */
+    if (!isNew) {
+      h += '<div style="grid-column:1/-1"><label class="sk-lbl">Tr\u1ea1ng th\u00e1i xe</label>';
+      h += '<select id="vf_status" class="sk-inp">';
+      h += _opt('san_sang',  'S\u1eb5n s\u00e0ng',                    v.status);
+      h += _opt('dang_giao', '\u0110ang giao',                         v.status);
+      h += _opt('bao_duong', 'B\u1ea3o d\u01b0\u1ee1ng',               v.status);
+      h += _opt('ngung',     'Ng\u01b0ng ho\u1ea1t \u0111\u1ed9ng',    v.status);
+      h += '</select></div>';
     }
-    h += '</select></div>';
-
-    // \u0110\u1ecbnh m\u1ee9c x\u0103ng
-    h += _field('vf-quota', '\u0110\u1ecbnh m\u1ee9c (L/100km) *', 'number', v ? v.fuel_quota : 12, 'VD: 12');
-
-    // T\u1ea3i tr\u1ecdng
-    h += _field('vf-load', 'T\u1ea3i tr\u1ecdng (kg)', 'number', v ? v.load_capacity : 0, 'VD: 2000');
-
-    // Odometer
-    h += _field('vf-odo', 'Odometer (km)', 'number', v ? v.odometer : 0, 'S\u1ed1 km hi\u1ec7n t\u1ea1i');
-
-    // H\u1ea1n \u0111\u0103ng ki\u1ec3m
-    var regExpVal = (v && v.registration_exp) ? _isoDate(v.registration_exp) : '';
-    h += _field('vf-regexp', 'H\u1ea1n \u0111\u0103ng ki\u1ec3m', 'date', regExpVal, '');
-
-    // H\u1ea1n b\u1ea3o hi\u1ec3m
-    var insExpVal = (v && v.insurance_exp) ? _isoDate(v.insurance_exp) : '';
-    h += _field('vf-insexp', 'H\u1ea1n b\u1ea3o hi\u1ec3m', 'date', insExpVal, '');
-
-    // M\u1ed1c b\u1ea3o d\u01b0\u1ee1ng
-    h += _field('vf-maint', 'M\u1ed1c b\u1ea3o d\u01b0\u1ee1ng (km)', 'number', v ? v.maint_km : 0, 'VD: 50000');
-
-    // Khu v\u1ef1c
-    h += _field('vf-area', 'Khu v\u1ef1c', 'text', v ? v.area : '', 'VD: HCM, HN');
-
-    // Tr\u1ea1ng th\u00e1i
-    h += '<div><label style="font-size:12px;color:#9ca3af">Tr\u1ea1ng th\u00e1i</label>'
-      + '<select id="vf-status" class="sk-inp" style="width:100%">';
-    var statuses = ['san_sang', 'dang_giao', 'bao_duong', 'ngung'];
-    for (var s = 0; s < statuses.length; s++) {
-      var sel = (v && v.status === statuses[s]) ? ' selected' : '';
-      h += '<option value="' + statuses[s] + '"' + sel + '>' + STATUS_MAP[statuses[s]].label + '</option>';
-    }
-    h += '</select></div>';
-
-    h += '</div>'; // end grid
-
-    // Buttons
-    h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">';
-    h += '<button class="sk-btn" style="background:transparent;border:1px solid #374151" onclick="_vehCloseModal()">H\u1ee7y</button>';
-    h += '<button class="sk-btn" style="background:var(--sk-green)" onclick="_vehSaveForm()">'
-      + (isEdit ? '&#x2705; C\u1eadp nh\u1eadt' : '&#x2795; Th\u00eam xe') + '</button>';
-    h += '</div>';
 
     h += '</div></div>';
 
-    document.body.insertAdjacentHTML('beforeend', h);
-  }
+    /* Modal footer */
+    h += '<div class="sk-modal-ft">';
+    h += '<button class="sk-btn-sm sk-btn-outline" onclick="_removeModal(\'sk-veh-modal\')">H\u1ee7y</button>';
+    h += '<button class="sk-btn" id="vf_save" onclick="_vehSaveForm()">';
+    h += isNew ? '&#x1F4BE; L\u01b0u xe m\u1edbi' : '&#x2705; C\u1eadp nh\u1eadt';
+    h += '</button></div></div></div>';
 
-  function _field(id, label, type, value, placeholder, disabled) {
-    return '<div><label style="font-size:12px;color:#9ca3af">' + label + '</label>'
-      + '<input id="' + id + '" class="sk-inp" type="' + type + '" '
-      + 'value="' + esc(String(value || '')) + '" '
-      + 'placeholder="' + esc(placeholder || '') + '" '
-      + (disabled ? 'disabled style="width:100%;opacity:0.6"' : 'style="width:100%"')
-      + '></div>';
-  }
-
-  function _isoDate(d) {
-    if (!d) return '';
-    var dt = new Date(d);
-    if (isNaN(dt.getTime())) return '';
-    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0')
-      + '-' + String(dt.getDate()).padStart(2, '0');
-  }
-
-  function _vehCloseModal() {
-    var m = getEl('veh-modal');
-    if (m) m.remove();
+    document.body.appendChild(document.createRange().createContextualFragment(h));
   }
 
   function _vehSaveForm() {
-    var plate = (getEl('vf-plate').value || '').trim().toUpperCase();
-    var quota = Number(getEl('vf-quota').value);
-    if (!plate) { toast('Vui l\u00f2ng nh\u1eadp bi\u1ec3n s\u1ed1 xe!'); return; }
-    if (!quota || quota <= 0) { toast('Vui l\u00f2ng nh\u1eadp \u0111\u1ecbnh m\u1ee9c x\u0103ng!'); return; }
+    var btn = document.getElementById('vf_save');
+    if (btn) btn.disabled = true;
 
-    var body = {
-      plate: plate,
-      type: getEl('vf-type').value,
-      driver_email: getEl('vf-driver').value,
-      fuel_type: getEl('vf-fueltype').value,
-      fuel_quota: quota,
-      load_capacity: Number(getEl('vf-load').value) || 0,
-      odometer: Number(getEl('vf-odo').value) || 0,
-      registration_exp: getEl('vf-regexp').value || '',
-      insurance_exp: getEl('vf-insexp').value || '',
-      maint_km: Number(getEl('vf-maint').value) || 0,
-      area: getEl('vf-area').value || '',
-      status: getEl('vf-status').value
+    var dSel   = document.getElementById('vf_driver');
+    var dEmail = dSel ? dSel.value : '';
+    var dName  = '';
+    if (dSel && dSel.selectedIndex >= 0) {
+      dName = (dSel.options[dSel.selectedIndex].text || '').split(' (')[0];
+    }
+    var plate = (_val('vf_plate') || '').toUpperCase().replace(/\s/g, '').trim();
+    if (!plate) {
+      _toast('&#x26A0;&#xFE0F; Vui l\u00f2ng nh\u1eadp bi\u1ec3n s\u1ed1 xe!', 'warn');
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    var payload = {
+      plate:            plate,
+      type:             _val('vf_type'),
+      driver_email:     dEmail,
+      driver_name:      dName,
+      fuel_quota:       _val('vf_quota'),
+      fuel_type:        _val('vf_ftype'),
+      load_capacity_kg: _val('vf_load'),
+      odometer:         _val('vf_odo'),
+      maint_km:         _val('vf_maint'),
+      area:             _val('vf_area'),
+      registration_exp: _val('vf_reg'),
+      insurance_exp:    _val('vf_ins'),
+      status:           _val('vf_status') || 'san_sang'
     };
 
-    api('veh_save_registry', body, function(err, d) {
+    api('veh_save_registry', payload, function (err, d) {
+      if (btn) btn.disabled = false;
       if (err || !d || !d.ok) {
-        toast('L\u1ed7i: ' + (d ? d.error : String(err)));
+        _toast('&#x274C; L\u1ed7i l\u01b0u: ' + (d && d.error || 'Kh\u00f4ng r\u00f5'), 'error');
         return;
       }
-      _vehCloseModal();
-      toast('\u2705 ' + (d.action === 'created' ? 'Th\u00eam xe' : 'C\u1eadp nh\u1eadt') + ' th\u00e0nh c\u00f4ng: ' + plate);
-      _vehRenderRegistry();
+      _removeModal('sk-veh-modal');
+      _toast('&#x2705; \u0110\u00e3 l\u01b0u xe ' + plate, 'ok');
+      _vehRender();
     });
   }
 
-  // ============================================================
-  // TAB 2: T\u00cdNH CHI PH\u00cd X\u0102NG (Calculator)
-  // ============================================================
-  function _vehRenderCostCalc() {
-    var el = getEl('veh-content');
-    if (!el) return;
+  /* ============================================================
+   * S5 — TAB XĂNG: TÍNH CHI PHÍ HÀNH TRÌNH
+   * NÂNG CẤP [2]: Toll Fee dropdown + Breakdown chart đầy đủ
+   * Công thức SKILL: Fuel_Cost = (Distance / 100) * Quota * Price
+   * ============================================================ */
 
-    // Load registry n\u1ebfu ch\u01b0a c\u00f3
-    if (_veh.registry.length === 0) {
-      _veh.loading = true;
-      el.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af">&#x23F3; \u0110ang t\u1ea3i...</div>';
-      api('veh_get_registry', {}, function(err, d) {
-        _veh.loading = false;
-        if (d && d.ok) _veh.registry = d.vehicles || [];
-        _vehRenderCostCalc();
-      });
-      return;
-    }
+  function _calcRender() {
+    var b = _body();
+    if (!b) return;
+    b.innerHTML = _skelBlock();
 
-    var reg = _veh.registry;
-    var h = '<div class="sk-panel" style="padding:20px;max-width:640px">';
-    h += '<div class="sk-pt" style="font-size:16px;margin-bottom:16px">&#x26FD; T\u00ednh chi ph\u00ed x\u0103ng d\u1ea7u theo \u0111\u1ecbnh m\u1ee9c</div>';
+    _loadFuelPrices(function (prices) {
+      var b2 = _body();
+      if (!b2) return;
 
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+      var reg    = window._veh.registry || [];
+      var xeOpts = '<option value="">-- Ch\u1ecdn xe --</option>';
+      for (var i = 0; i < reg.length; i++) {
+        var v = reg[i];
+        xeOpts += '<option value="' + _esc(v.plate) + '"'
+          + ' data-q="' + (v.fuel_quota || 0) + '"'
+          + ' data-ft="' + (v.fuel_type || 'xang_ron95') + '">'
+          + v.plate + ' \u2014 ' + _typeName(v.type)
+          + (v.driver_name ? ' (' + v.driver_name + ')' : '')
+          + '</option>';
+      }
 
-    // Ch\u1ecdn xe
-    h += '<div><label style="font-size:12px;color:#9ca3af">Bi\u1ec3n s\u1ed1 xe *</label>'
-      + '<select id="vc-plate" class="sk-inp" style="width:100%" onchange="_vehOnPlateChange()">'
-      + '<option value="">-- Ch\u1ecdn xe --</option>';
-    for (var i = 0; i < reg.length; i++) {
-      var v = reg[i];
-      if (v.status === 'ngung') continue;
-      h += '<option value="' + esc(v.plate) + '" '
-        + 'data-quota="' + v.fuel_quota + '" '
-        + 'data-ftype="' + esc(v.fuel_type) + '" '
-        + 'data-driver="' + esc(v.driver_name) + '">'
-        + esc(v.plate) + ' (' + v.fuel_quota + 'L/100km - ' + esc(v.driver_name || 'ch\u01b0a g\u00e1n') + ')'
-        + '</option>';
-    }
-    h += '</select></div>';
+      var p95  = (prices.xang_ron95 || 0).toLocaleString('vi-VN');
+      var p92  = (prices.xang_ron92 || 0).toLocaleString('vi-VN');
+      var pdsl = (prices.dau_diesel  || 0).toLocaleString('vi-VN');
 
-    // M\u00e3 \u0111\u01a1n Sapo
-    h += '<div><label style="font-size:12px;color:#9ca3af">M\u00e3 \u0111\u01a1n Sapo</label>'
-      + '<input id="vc-order" class="sk-inp" placeholder="VD: SON-0042" style="width:100%"></div>';
+      var tollOpts = '';
+      for (var t = 0; t < _TOLL_PRESETS.length; t++) {
+        tollOpts += '<option value="' + _TOLL_PRESETS[t].val + '">'
+          + _TOLL_PRESETS[t].label + '</option>';
+      }
 
-    // Qu\u00e3ng \u0111\u01b0\u1eddng
-    h += '<div><label style="font-size:12px;color:#9ca3af">Qu\u00e3ng \u0111\u01b0\u1eddng (km) *</label>'
-      + '<input id="vc-dist" class="sk-inp" type="number" min="0" step="0.1" placeholder="0" '
-      + 'oninput="_vehLiveCalc()" style="width:100%"></div>';
+      var notice = window._veh.fuelPricesDefault
+        ? '<div class="sk-veh-notice-warn">&#x26A0;&#xFE0F; \u0110ang d\u00f9ng gi\u00e1 m\u1eb7c \u0111\u1ecbnh — ki\u1ec3m tra GAS Config sheet \u0111\u1ec3 c\u1eadp nh\u1eadt gi\u00e1 \u0111\u00fang</div>'
+        : '<div class="sk-veh-notice-ok">&#x2705; Gi\u00e1 nhi\u00ean li\u1ec7u \u0111\u00e3 \u0111\u1ed3ng b\u1ed9 t\u1eeb h\u1ec7 th\u1ed1ng</div>';
 
-    // Gi\u00e1 x\u0103ng
-    h += '<div><label style="font-size:12px;color:#9ca3af">Gi\u00e1 x\u0103ng (VN\u0110/L)</label>'
-      + '<input id="vc-fprice" class="sk-inp" type="number" placeholder="T\u1ef1 \u0111\u1ed9ng theo lo\u1ea1i" '
-      + 'oninput="_vehLiveCalc()" style="width:100%"></div>';
+      var h = '';
+      h += '<h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:#e2e8f0;">'
+        + '&#x26FD; T\u00ednh chi ph\u00ed h\u00e0nh tr\u00ecnh</h3>';
+      h += notice;
+      h += '<div class="sk-veh-calc-wrap">';
 
-    // \u0110i\u1ec3m \u0111i
-    h += '<div><label style="font-size:12px;color:#9ca3af">\u0110i\u1ec3m xu\u1ea5t ph\u00e1t</label>'
-      + '<input id="vc-from" class="sk-inp" value="Kho S\u01a1n Khang" style="width:100%"></div>';
+      /* ── Cột trái: Form nhập ── */
+      h += '<div class="sk-panel" style="padding:18px;">';
+      h += '<div class="sk-pt" style="margin-bottom:14px;">Th\u00f4ng tin chuy\u1ebfn \u0111i</div>';
+      h += '<div class="sk-fg2">';
 
-    // \u0110i\u1ec3m \u0111\u1ebfn
-    h += '<div><label style="font-size:12px;color:#9ca3af">\u0110i\u1ec3m \u0111\u1ebfn</label>'
-      + '<input id="vc-to" class="sk-inp" placeholder="\u0110\u1ecba ch\u1ec9 giao h\u00e0ng" style="width:100%"></div>';
+      h += '<div style="grid-column:1/-1"><label class="sk-lbl">Xe &#x1F697;</label>';
+      h += '<select id="calc_plate" class="sk-inp" onchange="_calcFillQuota()">' + xeOpts + '</select></div>';
 
-    // Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng
-    h += '<div><label style="font-size:12px;color:#9ca3af">Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng (VN\u0110)</label>'
-      + '<input id="vc-toll" class="sk-inp" type="number" value="0" '
-      + 'oninput="_vehLiveCalc()" style="width:100%"></div>';
+      h += '<div><label class="sk-lbl">\u0110\u1ecbnh m\u1ee9c (L/100km)</label>';
+      h += '<input id="calc_q" class="sk-inp" type="number" step=".1" min=".1"'
+        + ' placeholder="8.5" oninput="_calcLive()"></div>';
 
-    // CP kh\u00e1c
-    h += '<div><label style="font-size:12px;color:#9ca3af">Chi ph\u00ed kh\u00e1c (VN\u0110)</label>'
-      + '<input id="vc-other" class="sk-inp" type="number" value="0" '
-      + 'oninput="_vehLiveCalc()" style="width:100%"></div>';
+      h += '<div><label class="sk-lbl">Lo\u1ea1i nhi\u00ean li\u1ec7u</label>';
+      h += '<select id="calc_ft" class="sk-inp" onchange="_calcLive()">';
+      h += '<option value="xang_ron95">RON 95 — ' + p95 + ' \u0111/L</option>';
+      h += '<option value="xang_ron92">RON 92 — ' + p92 + ' \u0111/L</option>';
+      h += '<option value="dau_diesel">Diesel \u2014 '  + pdsl + ' \u0111/L</option>';
+      h += '</select></div>';
 
-    h += '</div>'; // end grid
+      h += '<div style="grid-column:1/-1"><label class="sk-lbl">Kho\u1ea3ng c\u00e1ch (km) &#x1F4CF;</label>';
+      h += '<input id="calc_km" class="sk-inp" type="number" min=".1" max="3000" step=".1"'
+        + ' placeholder="VD: 45 km" oninput="_calcLive()"></div>';
+      h += '</div>';
 
-    // Live Preview box
-    h += '<div id="vc-preview" style="margin-top:16px;padding:16px;'
-      + 'background:rgba(59,130,246,0.06);border-radius:8px;border:1px solid rgba(59,130,246,0.15);'
-      + 'display:none"></div>';
+      /* ── Toll Fee section nổi bật [NÂNG CẤP] ── */
+      h += '<div class="sk-veh-toll-section">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+      h += '<label class="sk-lbl" style="margin:0;font-size:12.5px;color:#f59e0b;">'
+        + '&#x1F6E3; Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng (VN\u0110)</label>';
+      h += '<span style="font-size:11px;color:#64748b;">Ch\u1ecdn nhanh:</span>';
+      h += '</div>';
+      h += '<select id="calc_toll_pre" class="sk-inp" style="margin-bottom:8px;" onchange="_calcTollPre()">'
+        + tollOpts + '</select>';
+      h += '<input id="calc_toll" class="sk-inp" type="number" min="0" step="1000"'
+        + ' placeholder="Ho\u1eb7c nh\u1eadp s\u1ed1 ti\u1ec1n t\u1ea1i \u0111\u00e2y" oninput="_calcLive()">';
+      h += '</div>';
 
-    // Buttons
-    h += '<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">';
-    h += '<button class="sk-btn" style="background:transparent;border:1px solid #374151" '
-      + 'onclick="_vehRenderCostCalc()">&#x1F504; Reset</button>';
-    h += '<button class="sk-btn" style="background:var(--sk-green);font-weight:600" '
-      + 'onclick="_vehSubmitCost()">&#x2705; L\u01b0u &amp; ghi Finance</button>';
-    h += '</div>';
+      /* Chi phí khác */
+      h += '<div style="margin-top:12px;"><label class="sk-lbl">&#x1F4B3; Chi ph\u00ed kh\u00e1c (VN\u0110)</label>';
+      h += '<input id="calc_other" class="sk-inp" type="number" min="0"'
+        + ' placeholder="B\u1ea1t m\u00fap, bao n\u00ed l\u00f4ng... (0 n\u1ebfu kh\u00f4ng c\u00f3)" oninput="_calcLive()"></div>';
 
-    h += '</div>';
-    el.innerHTML = h;
+      /* Chi tiết lộ trình (mở rộng) */
+      h += '<details style="margin-top:14px;">';
+      h += '<summary style="color:#64748b;font-size:12px;cursor:pointer;padding:4px 0;">'
+        + '&#x1F4CC; L\u1ed9 tr\u00ecnh v\u00e0 m\u00e3 \u0111\u01a1n h\u00e0ng (t\u00f9y ch\u1ecdn)</summary>';
+      h += '<div style="padding-top:10px;" class="sk-fg2">';
+      h += '<div><label class="sk-lbl">M\u00e3 \u0111\u01a1n Sapo</label>';
+      h += '<input id="calc_order" class="sk-inp" type="text" placeholder="SP-XXXXX"></div>';
+      h += '<div><label class="sk-lbl">Ghi ch\u00fa</label>';
+      h += '<input id="calc_note" class="sk-inp" type="text" placeholder="..."></div>';
+      h += '<div><label class="sk-lbl">T\u1eeb \u0111i\u1ec3m</label>';
+      h += '<input id="calc_from" class="sk-inp" type="text" placeholder="Kho S\u01a1n Khang"></div>';
+      h += '<div><label class="sk-lbl">\u0110\u1ebfn \u0111i\u1ec3m</label>';
+      h += '<input id="calc_to" class="sk-inp" type="text" placeholder="Q. B\u00ecnh D\u01b0\u01a1ng"></div>';
+      h += '</div></details>';
+
+      /* Nút hành động */
+      h += '<div style="display:flex;gap:8px;margin-top:18px;">';
+      h += '<button class="sk-btn sk-btn-outline" style="flex:1;" onclick="_calcVerify()">'
+        + '&#x1F50D; Ki\u1ec3m tra server</button>';
+      h += '<button class="sk-btn" style="flex:2;" onclick="_calcSave()">'
+        + '&#x1F4BE; L\u01b0u h\u00e0nh tr\u00ecnh</button>';
+      h += '</div>';
+      h += '</div>';
+
+      /* ── Cột phải: Kết quả tính toán + Breakdown ── */
+      h += '<div style="display:flex;flex-direction:column;gap:14px;">';
+      h += '<div class="sk-panel" id="calc-result-box" style="padding:18px;">';
+      h += '<div class="sk-pt" style="margin-bottom:14px;">&#x1F4CA; K\u1ebft qu\u1ea3 t\u00ednh to\u00e1n</div>';
+      h += '<div id="calc-result">';
+      h += '<div style="color:#64748b;font-size:13px;text-align:center;padding:20px 0;">'
+        + '&#x2B05;&#xFE0F; \u0110i\u1ec1n th\u00f4ng tin b\u00ean tr\u00e1i \u0111\u1ec3 xem k\u1ebft qu\u1ea3</div>';
+      h += '</div>';
+      h += '</div>';
+      /* Server verify box */
+      h += '<div class="sk-panel" id="calc-srv" style="display:none;padding:14px;">';
+      h += '<div style="font-size:11.5px;color:#64748b;margin-bottom:6px;">'
+        + '&#x1F4E1; K\u1ebft qu\u1ea3 x\u00e1c nh\u1eadn t\u1eeb server:</div>';
+      h += '<div id="calc-srv-data"></div>';
+      h += '</div>';
+      h += '</div>';
+
+      h += '</div>';
+      b2.innerHTML = h;
+    });
   }
 
-  function _vehOnPlateChange() {
-    var sel = getEl('vc-plate');
+  function _loadFuelPrices(cb) {
+    var st = window._veh;
+    if (st.fuelPrices) { cb(st.fuelPrices); return; }
+    api('veh_get_fuel_prices', {}, function (err, d) {
+      if (!err && d && d.ok && d.prices) {
+        st.fuelPrices        = d.prices;
+        st.fuelPricesDefault = false;
+      } else {
+        st.fuelPrices        = _FUEL_DEFAULT;
+        st.fuelPricesDefault = true;
+      }
+      cb(st.fuelPrices);
+    });
+  }
+
+  function _calcFillQuota() {
+    var sel = document.getElementById('calc_plate');
+    if (!sel || !sel.value) return;
+    var opt  = sel.options[sel.selectedIndex];
+    var qEl  = document.getElementById('calc_q');
+    var ftEl = document.getElementById('calc_ft');
+    if (qEl)  qEl.value  = opt.getAttribute('data-q')  || '';
+    if (ftEl) ftEl.value = opt.getAttribute('data-ft') || 'xang_ron95';
+    _calcLive();
+  }
+
+  function _calcTollPre() {
+    var sel = document.getElementById('calc_toll_pre');
     if (!sel) return;
-    var opt = sel.options[sel.selectedIndex];
-    if (!opt || !opt.value) return;
-
-    // Auto-fill gi\u00e1 x\u0103ng theo lo\u1ea1i
-    var ftype = opt.getAttribute('data-ftype') || 'xang_ron92';
-    var fpriceEl = getEl('vc-fprice');
-    if (fpriceEl && !fpriceEl.value) {
-      fpriceEl.placeholder = fmtNum(FUEL_PRICES[ftype] || 23810) + ' (' + (FUEL_TYPES[ftype] || ftype) + ')';
+    var v = parseInt(sel.value, 10);
+    if (v === -1) {
+      var t = document.getElementById('calc_toll');
+      if (t) { t.value = ''; t.focus(); }
+      return;
     }
-    _vehLiveCalc();
+    if (v >= 0) {
+      var t2 = document.getElementById('calc_toll');
+      if (t2) t2.value = v;
+      _calcLive();
+    }
   }
 
-  function _vehLiveCalc() {
-    var plateEl = getEl('vc-plate');
-    var distEl = getEl('vc-dist');
-    var preview = getEl('vc-preview');
-    if (!plateEl || !distEl || !preview) return;
+  /* Tính live client-side — SKILL: Fuel_Cost = (km/100) * quota * price */
+  function _calcLive() {
+    var km    = parseFloat(_val('calc_km')    || 0);
+    var quota = parseFloat(_val('calc_q')     || 0);
+    var toll  = parseFloat(_val('calc_toll')  || 0);
+    var other = parseFloat(_val('calc_other') || 0);
+    var ft    = _val('calc_ft') || 'xang_ron95';
+    var prices = window._veh.fuelPrices || _FUEL_DEFAULT;
+    var price  = prices[ft] || prices.xang_ron95;
+    var box    = document.getElementById('calc-result');
+    if (!box) return;
 
-    var sel = plateEl.options[plateEl.selectedIndex];
-    var quota = sel ? Number(sel.getAttribute('data-quota')) : 0;
-    var ftype = sel ? (sel.getAttribute('data-ftype') || 'xang_ron92') : 'xang_ron92';
-    var dist = Number(distEl.value) || 0;
-
-    if (!quota || !dist) {
-      preview.style.display = 'none';
+    if (!km || !quota) {
+      box.innerHTML = '<div style="color:#64748b;font-size:13px;text-align:center;padding:20px 0;">'
+        + '&#x2B05;&#xFE0F; Nh\u1eadp kho\u1ea3ng c\u00e1ch v\u00e0 \u0111\u1ecbnh m\u1ee9c</div>';
       return;
     }
 
-    var fprice = Number((getEl('vc-fprice') || {}).value) || FUEL_PRICES[ftype] || 23810;
-    var toll = Number((getEl('vc-toll') || {}).value) || 0;
-    var other = Number((getEl('vc-other') || {}).value) || 0;
+    var liters   = (km / 100) * quota;
+    var fuelCost = liters * price;
+    var total    = fuelCost + toll + other;
+    var perKm    = km > 0 ? Math.round(total / km) : 0;
 
-    var liters = Math.round((dist / 100) * quota * 100) / 100;
-    var fuelCost = Math.round(liters * fprice);
-    var total = fuelCost + toll + other;
+    /* Phần trăm từng loại cho breakdown chart */
+    var pF = total > 0 ? Math.round(fuelCost / total * 100) : 100;
+    var pT = total > 0 ? Math.round(toll      / total * 100) : 0;
+    var pO = Math.max(0, 100 - pF - pT);
 
-    preview.style.display = 'block';
-    preview.innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--sk-blue);margin-bottom:10px">'
-      + '&#x1F4CA; K\u1ebft qu\u1ea3 t\u00ednh nhanh (client-side)</div>'
-      + '<table style="width:100%;font-size:13px;color:#d1d5db;border-collapse:collapse">'
-      + '<tr><td style="padding:4px 0">C\u00f4ng th\u1ee9c:</td>'
-      + '<td style="text-align:right;font-family:monospace">' + dist + 'km \u00f7 100 \u00d7 ' + quota + 'L = <strong>' + liters + ' l\u00edt</strong></td></tr>'
-      + '<tr><td style="padding:4px 0">Chi ph\u00ed x\u0103ng:</td>'
-      + '<td style="text-align:right">' + liters + 'L \u00d7 ' + fmtNum(fprice) + '\u0111 = <strong style="color:var(--sk-yellow)">' + fmtNum(fuelCost) + '\u0111</strong></td></tr>'
-      + '<tr><td style="padding:4px 0">Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng:</td>'
-      + '<td style="text-align:right">' + fmtNum(toll) + '\u0111</td></tr>'
-      + '<tr><td style="padding:4px 0">Chi ph\u00ed kh\u00e1c:</td>'
-      + '<td style="text-align:right">' + fmtNum(other) + '\u0111</td></tr>'
-      + '<tr style="border-top:1px solid rgba(255,255,255,0.1)">'
-      + '<td style="padding:8px 0"><strong>T\u1ed5ng c\u1ed9ng:</strong></td>'
-      + '<td style="text-align:right;padding:8px 0;font-size:18px;font-weight:700;color:var(--sk-green)">'
-      + fmtNum(total) + ' VN\u0110</td></tr>'
-      + '</table>';
+    var h = '<div style="display:flex;flex-direction:column;gap:10px;">';
+
+    /* Dòng thông tin */
+    h += _resRow('&#x1F4CF;', 'Kho\u1ea3ng c\u00e1ch',   km.toLocaleString('vi-VN') + ' km', '#94a3b8');
+    h += _resRow('&#x26FD;',  'Ti\u00eau th\u1ee5 x\u0103ng', liters.toFixed(2) + ' L',     '#94a3b8');
+    h += _resRow('&#x1F3F7;', 'Gi\u00e1/L nhi\u00ean li\u1ec7u', _vnd(price) + '/L',          '#94a3b8');
+
+    h += '<div style="border-top:1px dashed #1e293b;padding-top:10px;display:flex;flex-direction:column;gap:8px;">';
+    h += _resRow('&#x1F9EE;', 'Chi ph\u00ed x\u0103ng',       _vnd(fuelCost), '#3b82f6');
+    h += _resRow('&#x1F6E3;', 'Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng', _vnd(toll),  toll  > 0 ? '#f59e0b' : '#334155');
+    h += _resRow('&#x1F4B3;', 'Chi ph\u00ed kh\u00e1c',       _vnd(other), other > 0 ? '#8b5cf6' : '#334155');
+    h += '</div>';
+
+    /* Breakdown chart [NÂNG CẤP] */
+    if (total > 0) {
+      h += '<div class="sk-veh-breakdown">';
+      h += '<div style="font-size:11px;color:#64748b;margin-bottom:6px;">Ph\u00e2n b\u1ed5 chi ph\u00ed</div>';
+      h += '<div class="sk-veh-bar-wrap">';
+      if (pF > 0)  h += '<div class="sk-veh-bar-f" style="width:' + pF + '%" title="X\u0103ng ' + pF + '%"></div>';
+      if (pT > 0)  h += '<div class="sk-veh-bar-t" style="width:' + pT + '%" title="C\u1ea7u ' + pT + '%"></div>';
+      if (pO > 0)  h += '<div class="sk-veh-bar-o" style="width:' + pO + '%" title="Kh\u00e1c ' + pO + '%"></div>';
+      h += '</div>';
+      h += '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;margin-top:5px;">';
+      h += '<span style="color:#3b82f6;">&#x25A0; X\u0103ng ' + pF + '%</span>';
+      if (pT > 0) h += '<span style="color:#f59e0b;">&#x25A0; C\u1ea7u \u0111\u01b0\u1eddng ' + pT + '%</span>';
+      if (pO > 0) h += '<span style="color:#8b5cf6;">&#x25A0; Kh\u00e1c ' + pO + '%</span>';
+      h += '</div>';
+      h += '</div>';
+    }
+
+    /* Tổng nổi bật */
+    h += '<div class="sk-veh-total-box">';
+    h += '<span style="font-size:12.5px;color:#94a3b8;">T\u1ed5ng chi ph\u00ed h\u00e0nh tr\u00ecnh</span>';
+    h += '<span style="font-size:22px;font-weight:800;color:#f59e0b;font-variant-numeric:tabular-nums;">'
+      + _vnd(total) + '</span>';
+    h += '<span style="font-size:11.5px;color:#64748b;">'
+      + _vnd(perKm) + '/km &bull; '
+      + liters.toFixed(2) + 'L x\u0103ng</span>';
+    h += '</div>';
+
+    h += '</div>';
+    box.innerHTML = h;
   }
 
-  function _vehSubmitCost() {
-    var plate = (getEl('vc-plate') || {}).value;
-    var dist = Number((getEl('vc-dist') || {}).value);
-    if (!plate) { toast('Vui l\u00f2ng ch\u1ecdn xe!'); return; }
-    if (!dist || dist <= 0) { toast('Vui l\u00f2ng nh\u1eadp qu\u00e3ng \u0111\u01b0\u1eddng!'); return; }
+  function _resRow(icon, label, val, color) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;">'
+      + '<span style="color:#64748b;">' + icon + ' ' + label + '</span>'
+      + '<span style="color:' + color + ';font-weight:600;font-variant-numeric:tabular-nums;">' + val + '</span>'
+      + '</div>';
+  }
 
-    var body = {
-      plate: plate,
-      order_id: (getEl('vc-order') || {}).value || '',
-      distance_km: dist,
-      route_from: (getEl('vc-from') || {}).value || 'Kho S\u01a1n Khang',
-      route_to: (getEl('vc-to') || {}).value || '',
-      toll_fee: Number((getEl('vc-toll') || {}).value) || 0,
-      other_cost: Number((getEl('vc-other') || {}).value) || 0,
-      fuel_price: Number((getEl('vc-fprice') || {}).value) || 0,
-      save: true
-    };
+  function _calcVerify() {
+    var km    = _val('calc_km');
+    var quota = _val('calc_q');
+    if (!km || !quota) {
+      _toast('&#x26A0;&#xFE0F; Nh\u1eadp kho\u1ea3ng c\u00e1ch v\u00e0 \u0111\u1ecbnh m\u1ee9c tr\u01b0\u1edbc', 'warn');
+      return;
+    }
+    var srvBox = document.getElementById('calc-srv');
+    var srvDat = document.getElementById('calc-srv-data');
+    if (srvBox) srvBox.style.display = 'block';
+    if (srvDat) srvDat.innerHTML = '<span style="color:#64748b;">\u0110ang ki\u1ec3m tra...</span>';
 
-    // Disable button
-    var btn = event.target;
+    api('veh_calc_trip_cost', {
+      distance_km: km,
+      fuel_quota:  quota,
+      fuel_type:   _val('calc_ft') || 'xang_ron95',
+      toll_fee:    _val('calc_toll')  || 0,
+      other_cost:  _val('calc_other') || 0
+    }, function (err, d) {
+      if (!srvDat) return;
+      if (err || !d || !d.ok) {
+        srvDat.innerHTML = '<span style="color:#ef4444;">'
+          + 'L\u1ed7i: ' + (d && d.error || '?') + '</span>';
+        return;
+      }
+      srvDat.innerHTML = '&#x2705; <strong style="color:#f59e0b;">'
+        + _vnd(d.total_cost) + '</strong>'
+        + ' &bull; X\u0103ng: ' + _vnd(d.fuel_cost)
+        + ' &bull; ' + d.fuel_liters + 'L @ ' + _vnd(d.fuel_price) + '/L';
+      _toast('&#x2705; Server x\u00e1c nh\u1eadn: ' + _vnd(d.total_cost), 'ok');
+    });
+  }
+
+  function _calcSave() {
+    var plate = _val('calc_plate');
+    var km    = _val('calc_km');
+    var quota = _val('calc_q');
+    if (!plate) { _toast('&#x26A0;&#xFE0F; Ch\u1ecdn xe tr\u01b0\u1edbc!',                  'warn'); return; }
+    if (!km)    { _toast('&#x26A0;&#xFE0F; Nh\u1eadp kho\u1ea3ng c\u00e1ch!',               'warn'); return; }
+    if (!quota) { _toast('&#x26A0;&#xFE0F; Nh\u1eadp \u0111\u1ecbnh m\u1ee9c x\u0103ng!',   'warn'); return; }
+    if (parseFloat(km) <= 0)    { _toast('&#x26A0;&#xFE0F; Kho\u1ea3ng c\u00e1ch ph\u1ea3i > 0', 'warn'); return; }
+    if (parseFloat(quota) <= 0) { _toast('&#x26A0;&#xFE0F; \u0110\u1ecbnh m\u1ee9c ph\u1ea3i > 0', 'warn'); return; }
+
+    /* Kiểm tra trạng thái xe */
+    var reg = window._veh.registry || [];
+    for (var i = 0; i < reg.length; i++) {
+      if (reg[i].plate === plate) {
+        if (reg[i].status === 'dang_giao') { _toast('&#x26A0;&#xFE0F; Xe \u0111ang trong chuy\u1ebfn kh\u00e1c!', 'warn'); return; }
+        if (reg[i].status === 'bao_duong') { _toast('&#x26A0;&#xFE0F; Xe \u0111ang b\u1ea3o d\u01b0\u1ee1ng!',    'warn'); return; }
+        if (reg[i].status === 'ngung')     { _toast('&#x26A0;&#xFE0F; Xe \u0111\u00e3 ng\u01b0ng ho\u1ea1t \u0111\u1ed9ng!', 'warn'); return; }
+        break;
+      }
+    }
+
+    var btn = document.querySelector('[onclick="_calcSave()"]');
     if (btn) { btn.disabled = true; btn.textContent = '\u0110ang l\u01b0u...'; }
 
-    api('veh_calc_trip_cost', body, function(err, d) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '&#x2705; L\u01b0u &amp; ghi Finance'; }
+    api('veh_dispatch', {
+      plate:        plate,
+      distance_km:  km,
+      fuel_quota:   quota,
+      fuel_type:    _val('calc_ft')    || 'xang_ron95',
+      toll_fee:     _val('calc_toll')  || 0,
+      other_cost:   _val('calc_other') || 0,
+      order_id:     _val('calc_order') || '',
+      route_from:   _val('calc_from')  || '',
+      route_to:     _val('calc_to')    || ''
+    }, function (err, d) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4BE; L\u01b0u h\u00e0nh tr\u00ecnh'; }
       if (err || !d || !d.ok) {
-        toast('L\u1ed7i: ' + (d ? d.error : String(err)));
+        _toast('&#x274C; L\u1ed7i: ' + (d && d.error || 'Kh\u00f4ng r\u00f5'), 'error');
         return;
       }
-      var c = d.calculation;
-      toast('\u2705 \u0110\u00e3 l\u01b0u th\u00e0nh c\u00f4ng!\n\n'
-        + 'M\u00e3 log: ' + d.log_id + '\n'
-        + 'X\u0103ng ti\u00eau th\u1ee5: ' + c.fuel_liters + ' L\n'
-        + 'Chi ph\u00ed x\u0103ng: ' + fmtNum(c.fuel_cost) + '\u0111\n'
-        + 'T\u1ed5ng: ' + fmtNum(c.total_cost) + ' VN\u0110\n'
-        + 'Odometer m\u1edbi: ' + fmtNum(c.new_odometer || 0) + 'km');
-
-      // Auto-sync finance
-      api('veh_sync_finance', {}, function() {});
-
-      // Refresh registry cache
-      _veh.registry = [];
-      _vehRenderCostCalc();
+      _toast('&#x2705; L\u1ec7nh ' + d.log_id + ' \u2014 ' + _vnd(d.total_cost), 'ok');
+      for (var j = 0; j < reg.length; j++) {
+        if (reg[j].plate === d.plate) { reg[j].status = 'dang_giao'; break; }
+      }
+      setTimeout(function () { _vehTab('ds'); }, 1500);
     });
   }
 
-  function _vehQuickCalc(plate) {
-    _veh.tab = 'cost';
-    loadVehicle();
-    setTimeout(function() {
-      var sel = getEl('vc-plate');
-      if (sel) {
-        sel.value = plate;
-        _vehOnPlateChange();
-        // Focus distance field
-        var distEl = getEl('vc-dist');
-        if (distEl) distEl.focus();
+  /* ============================================================
+   * S6 — TAB LỆNH: ĐIỀU PHỐI XE GIAO ĐƠN SAPO
+   * NÂNG CẤP [3]: Click đơn Sapo → tự điền form + ước tính phí
+   * ============================================================ */
+
+  function _lenhRender() {
+    var b = _body();
+    if (!b) return;
+    b.innerHTML = _skelBlock();
+
+    api('sapo_orders', { ship: 'pending', ps: 30, page: 1 }, function (err, d) {
+      var b2 = _body();
+      if (!b2) return;
+      var orders = [];
+      if (!err && d) {
+        var raw = d.data || d.orders || [];
+        for (var i = 0; i < raw.length; i++) {
+          var s = raw[i].fulfillment_status || '';
+          if (!s || s === 'unshipped' || s === 'pending') orders.push(raw[i]);
+        }
       }
-    }, 150);
+      b2.innerHTML = _lenhHtml(orders);
+    });
   }
 
-  // ============================================================
-  // TAB 3: L\u1ec6NH \u0110I\u1ec0U XE
-  // ============================================================
-  function _vehRenderDispatch() {
-    var el = getEl('veh-content');
-    if (!el) return;
+  function _lenhHtml(orders) {
+    var reg   = window._veh.registry || [];
+    var ready = [];
+    for (var i = 0; i < reg.length; i++) {
+      if (reg[i].status === 'san_sang') ready.push(reg[i]);
+    }
 
-    if (_veh.registry.length === 0) {
-      _veh.loading = true;
-      el.innerHTML = '<div style="text-align:center;padding:40px;color:#9ca3af">&#x23F3; \u0110ang t\u1ea3i...</div>';
-      api('veh_get_registry', {}, function(err, d) {
-        _veh.loading = false;
-        if (d && d.ok) _veh.registry = d.vehicles || [];
-        _vehRenderDispatch();
-      });
+    var h = '<h3 style="margin:0 0 16px;font-size:15px;font-weight:700;color:#e2e8f0;">'
+      + '&#x1F4CB; \u0110i\u1ec1u ph\u1ed1i xe giao \u0111\u01a1n</h3>';
+
+    /* Layout 2 cột */
+    h += '<div class="sk-veh-lenh-wrap">';
+
+    /* Cột trái: Đơn hàng Sapo chờ giao */
+    h += '<div>';
+    h += '<div class="sk-pt" style="margin-bottom:10px;">';
+    h += '\u0110\u01a1n h\u00e0ng ch\u1edd giao (' + orders.length + ')';
+    h += ' <span style="font-size:11px;color:#64748b;font-weight:400;">'
+      + '&#x1F447; Click ch\u1ecdn \u0111\u01a1n \u0111\u1ec3 t\u1ef1 \u0111i\u1ec1n form</span>';
+    h += '</div>';
+    if (orders.length === 0) {
+      h += _emptyBox('&#x1F4E6;', 'Kh\u00f4ng c\u00f3 \u0111\u01a1n n\u00e0o ch\u1edd giao',
+        'T\u1ea5t c\u1ea3 \u0111\u01a1n \u0111\u00e3 \u0111\u01b0\u1ee3c x\u1eed l\u00fd');
+    } else {
+      h += '<div style="max-height:460px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">';
+      for (var j = 0; j < orders.length; j++) {
+        h += _orderItem(orders[j]);
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+
+    /* Cột phải: Xe sẵn sàng */
+    h += '<div>';
+    h += '<div class="sk-pt" style="margin-bottom:10px;">'
+      + 'Xe s\u1eb5n s\u00e0ng (' + ready.length + ')</div>';
+    if (ready.length === 0) {
+      h += _emptyBox('&#x1F697;', 'Kh\u00f4ng c\u00f3 xe n\u00e0o s\u1eb5n s\u00e0ng',
+        'Ki\u1ec3m tra tr\u1ea1ng th\u00e1i c\u00e1c xe');
+    } else {
+      h += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      for (var k = 0; k < ready.length; k++) {
+        h += _readyVehItem(ready[k]);
+      }
+      h += '</div>';
+    }
+    h += '</div>';
+    h += '</div>';
+
+    /* Form tạo lệnh điều xe nhanh */
+    var pOpts = '<option value="">-- Ch\u1ecdn xe s\u1eb5n s\u00e0ng --</option>';
+    for (var r = 0; r < ready.length; r++) {
+      pOpts += '<option value="' + _esc(ready[r].plate) + '"'
+        + ' data-q="' + (ready[r].fuel_quota || 0) + '"'
+        + ' data-ft="' + (ready[r].fuel_type || 'xang_ron95') + '">'
+        + ready[r].plate + ' \u2014 ' + (ready[r].driver_name || ready[r].driver_email || '?') + '</option>';
+    }
+
+    h += '<div class="sk-panel" style="padding:18px;margin-top:16px;">';
+    h += '<div class="sk-pt" style="margin-bottom:14px;">&#x1F680; T\u1ea1o l\u1ec7nh \u0111i\u1ec1u xe nhanh</div>';
+    h += '<div class="sk-fg2">';
+
+    h += '<div><label class="sk-lbl">Xe &#x1F697;</label>';
+    h += '<select id="dsp_plate" class="sk-inp" onchange="_dspEstimate()">' + pOpts + '</select></div>';
+
+    h += '<div><label class="sk-lbl">M\u00e3 \u0111\u01a1n Sapo</label>';
+    h += '<input id="dsp_order" class="sk-inp" type="text"'
+      + ' placeholder="T\u1ef1 \u0111i\u1ec1n khi click \u0111\u01a1n b\u00ean tr\u00ean"></div>';
+
+    h += '<div><label class="sk-lbl">Kho\u1ea3ng c\u00e1ch (km)</label>';
+    h += '<input id="dsp_km" class="sk-inp" type="number" min="1" placeholder="VD: 30"'
+      + ' oninput="_dspEstimate()"></div>';
+
+    h += '<div><label class="sk-lbl">Ph\u00ed c\u1ea7u \u0111\u01b0\u1eddng (VN\u0110)</label>';
+    h += '<input id="dsp_toll" class="sk-inp" type="number" min="0" placeholder="0"'
+      + ' oninput="_dspEstimate()"></div>';
+
+    h += '<div><label class="sk-lbl">T\u1eeb \u0111i\u1ec3m</label>';
+    h += '<input id="dsp_from" class="sk-inp" type="text" placeholder="Kho S\u01a1n Khang"></div>';
+
+    h += '<div><label class="sk-lbl">\u0110\u1ebfn \u0111i\u1ec3m</label>';
+    h += '<input id="dsp_to" class="sk-inp" type="text"'
+      + ' placeholder="T\u1ef1 \u0111i\u1ec1n khi click \u0111\u01a1n"></div>';
+    h += '</div>';
+
+    /* Ước tính chi phí [NÂNG CẤP] */
+    h += '<div id="dsp-estimate" class="sk-veh-dsp-estimate" style="display:none;margin-top:14px;">';
+    h += '<div style="font-size:12px;color:#64748b;margin-bottom:6px;">'
+      + '&#x1F4B0; \u01AF\u1edbc t\u00ednh chi ph\u00ed chuy\u1ebfn:</div>';
+    h += '<div id="dsp-estimate-val" style="font-size:16px;font-weight:700;color:#f59e0b;'
+      + 'font-variant-numeric:tabular-nums;"></div>';
+    h += '</div>';
+
+    h += '<button class="sk-btn" style="margin-top:14px;width:100%;" onclick="_dspExec()">'
+      + '&#x1F4E4; Ph\u00e1t l\u1ec7nh \u0111i\u1ec1u xe</button>';
+    h += '</div>';
+    return h;
+  }
+
+  /* Order item — click để tự điền form [NÂNG CẤP] */
+  function _orderItem(o) {
+    var cust  = (o.customer && (o.customer.name || o.customer.phone))
+              || (o.shipping_address && o.shipping_address.name) || '\u2014';
+    var addr  = '';
+    if (o.shipping_address) {
+      addr = [
+        o.shipping_address.address1 || '',
+        o.shipping_address.ward    || '',
+        o.shipping_address.district || '',
+        o.shipping_address.city    || ''
+      ].filter(function (x) { return x; }).join(', ');
+    }
+    var totalVal = _vnd(o.total_price || 0);
+    var safeAddr = addr.replace(/'/g, '\u2019');
+    var safeCode = String(o.code || o.id || '').replace(/'/g, '');
+
+    return '<div class="sk-veh-order-item" onclick="_lenhFill(\'' + safeCode + '\',\'' + _esc(safeAddr) + '\')">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+      + '<div style="font-weight:700;color:#e2e8f0;font-size:13px;">#' + (o.code || o.id) + '</div>'
+      + '<div style="font-size:12px;color:#10b981;font-weight:600;">' + totalVal + '</div>'
+      + '</div>'
+      + '<div style="color:#94a3b8;font-size:12px;margin-top:3px;">' + _esc(String(cust)) + '</div>'
+      + (addr ? '<div style="color:#64748b;font-size:11px;margin-top:2px;">&#x1F4CD; ' + _esc(addr) + '</div>' : '')
+      + '<div style="font-size:11px;color:#3b82f6;margin-top:5px;font-style:italic;">'
+      + '&#x1F447; Nh\u1ea5n \u0111\u1ec3 ch\u1ecdn \u0111\u01a1n n\u00e0y</div>'
+      + '</div>';
+  }
+
+  function _readyVehItem(v) {
+    return '<div class="sk-veh-ready-item">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+      + '<div style="font-weight:700;color:#e2e8f0;font-size:13.5px;">' + v.plate + '</div>'
+      + _statusBadge(v.status)
+      + '</div>'
+      + '<div style="font-size:12px;color:#94a3b8;margin-top:4px;">'
+      + _typeIcon(v.type) + ' ' + (v.driver_name || v.driver_email || '\u2014') + '</div>'
+      + '<div style="font-size:11.5px;color:#64748b;margin-top:2px;">'
+      + v.fuel_quota + ' L/100km &bull; ' + _fuelName(v.fuel_type) + '</div>'
+      + '</div>';
+  }
+
+  /* Click đơn → tự điền order_id + địa chỉ vào form [NÂNG CẤP] */
+  function _lenhFill(orderId, addr) {
+    var oEl = document.getElementById('dsp_order');
+    var tEl = document.getElementById('dsp_to');
+    if (oEl) oEl.value = orderId;
+    if (tEl && addr) tEl.value = addr;
+    /* Highlight order đang chọn bằng màu */
+    var items = document.querySelectorAll('.sk-veh-order-item');
+    for (var i = 0; i < items.length; i++) {
+      var txt = items[i].textContent || items[i].innerText;
+      if (txt.indexOf('#' + orderId) >= 0) {
+        items[i].style.borderColor = '#3b82f6';
+        items[i].style.background  = 'rgba(59,130,246,.1)';
+      } else {
+        items[i].style.borderColor = '';
+        items[i].style.background  = '';
+      }
+    }
+    _dspEstimate();
+    _toast('&#x2714;&#xFE0F; \u0110\u00e3 ch\u1ecdn \u0111\u01a1n #' + orderId, 'ok');
+  }
+
+  /* Ước tính chi phí khi nhập km hoặc chọn xe [NÂNG CẤP] */
+  function _dspEstimate() {
+    var sel    = document.getElementById('dsp_plate');
+    var kmVal  = parseFloat(_val('dsp_km')   || 0);
+    var tollVal= parseFloat(_val('dsp_toll') || 0);
+    var box    = document.getElementById('dsp-estimate');
+    var val    = document.getElementById('dsp-estimate-val');
+    if (!sel || !sel.value || !kmVal || !val || !box) {
+      if (box) box.style.display = 'none';
       return;
     }
+    var opt    = sel.options[sel.selectedIndex];
+    var quota  = parseFloat(opt.getAttribute('data-q') || 0);
+    var ft     = opt.getAttribute('data-ft') || 'xang_ron95';
+    var prices = window._veh.fuelPrices || _FUEL_DEFAULT;
+    var price  = prices[ft] || prices.xang_ron95;
+    if (!quota || !price) { box.style.display = 'none'; return; }
 
-    var reg = _veh.registry;
-    var h = '<div class="sk-panel" style="padding:20px;max-width:500px">';
-    h += '<div class="sk-pt" style="font-size:16px;margin-bottom:16px">&#x1F4E6; T\u1ea1o l\u1ec7nh \u0111i\u1ec1u xe</div>';
+    var liters    = (kmVal / 100) * quota;
+    var fuelCost  = liters * price;
+    var total     = fuelCost + tollVal;
+    box.style.display = 'block';
+    val.innerHTML = _vnd(total)
+      + ' <span style="font-size:12px;color:#64748b;font-weight:400;">'
+      + '(' + liters.toFixed(2) + 'L x\u0103ng'
+      + (tollVal > 0 ? ' + c\u1ea7u ' + _vnd(tollVal) : '') + ')</span>';
+  }
 
-    h += '<div style="display:grid;gap:12px">';
+  function _dspExec() {
+    var plate = _val('dsp_plate');
+    var km    = _val('dsp_km');
+    if (!plate) { _toast('&#x26A0;&#xFE0F; Ch\u1ecdn xe tr\u01b0\u1edbc!',    'warn'); return; }
+    if (!km)    { _toast('&#x26A0;&#xFE0F; Nh\u1eadp kho\u1ea3ng c\u00e1ch!', 'warn'); return; }
 
-    // Ch\u1ecdn xe (ch\u1ec9 xe s\u1eb5n s\u00e0ng)
-    h += '<div><label style="font-size:12px;color:#9ca3af">Ch\u1ecdn xe (ch\u1ec9 xe s\u1eb5n s\u00e0ng) *</label>'
-      + '<select id="vd-plate" class="sk-inp" style="width:100%">'
-      + '<option value="">-- Ch\u1ecdn xe --</option>';
+    var sel   = document.getElementById('dsp_plate');
+    var quota = sel ? parseFloat(sel.options[sel.selectedIndex].getAttribute('data-q') || 0) : 0;
+
+    api('veh_dispatch', {
+      plate:       plate,
+      order_id:    _val('dsp_order') || '',
+      distance_km: km,
+      fuel_quota:  quota || 8.5,
+      toll_fee:    _val('dsp_toll') || 0,
+      route_from:  _val('dsp_from') || '',
+      route_to:    _val('dsp_to')   || ''
+    }, function (err, d) {
+      if (err || !d || !d.ok) {
+        _toast('&#x274C; L\u1ed7i: ' + (d && d.error || '?'), 'error');
+        return;
+      }
+      _toast('&#x2705; L\u1ec7nh ' + d.log_id + ' \u2014 ' + _vnd(d.total_cost), 'ok');
+      var reg = window._veh.registry || [];
+      for (var j = 0; j < reg.length; j++) {
+        if (reg[j].plate === d.plate) { reg[j].status = 'dang_giao'; break; }
+      }
+      _lenhRender();
+    });
+  }
+
+  /* ============================================================
+   * S7 — MODAL HOÀN THÀNH CHUYẾN
+   * NÂNG CẤP [4]: Hiển thị tóm tắt chi phí trước khi tạo phiếu chi
+   * ============================================================ */
+
+  function _completeOpen(plate) {
+    _removeModal('sk-complete-modal');
+
+    /* Tìm log_id chuyến đang giao của xe này */
+    var vehData = null;
+    var reg = window._veh.registry || [];
     for (var i = 0; i < reg.length; i++) {
-      if (reg[i].status !== 'san_sang') continue;
-      h += '<option value="' + esc(reg[i].plate) + '">'
-        + esc(reg[i].plate) + ' - ' + esc(reg[i].driver_name || 'ch\u01b0a g\u00e1n') + '</option>';
+      if (reg[i].plate === plate) { vehData = reg[i]; break; }
     }
-    h += '</select></div>';
 
-    // M\u00e3 \u0111\u01a1n Sapo
-    h += '<div><label style="font-size:12px;color:#9ca3af">M\u00e3 \u0111\u01a1n Sapo *</label>'
-      + '<input id="vd-order" class="sk-inp" placeholder="VD: SON-0042" style="width:100%"></div>';
+    var h = '<div id="sk-complete-modal" class="sk-modal-overlay"'
+      + ' onclick="_closeModal(\'sk-complete-modal\',event)">';
+    h += '<div class="sk-modal-box" style="max-width:460px;" onclick="event.stopPropagation()">';
 
-    // \u0110i\u1ec3m \u0111i + \u0111\u1ebfn
-    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-    h += '<div><label style="font-size:12px;color:#9ca3af">\u0110i\u1ec3m xu\u1ea5t ph\u00e1t</label>'
-      + '<input id="vd-from" class="sk-inp" value="Kho S\u01a1n Khang" style="width:100%"></div>';
-    h += '<div><label style="font-size:12px;color:#9ca3af">\u0110i\u1ec3m \u0111\u1ebfn</label>'
-      + '<input id="vd-to" class="sk-inp" placeholder="\u0110\u1ecba ch\u1ec9 giao" style="width:100%"></div>';
+    /* Header */
+    h += '<div class="sk-modal-hd">';
+    h += '&#x2705; Ho\u00e0n th\u00e0nh chuy\u1ebfn \u2014 ' + plate;
+    h += '<button onclick="_removeModal(\'sk-complete-modal\')" class="sk-modal-close">&times;</button>';
     h += '</div>';
 
-    h += '</div>'; // end form grid
+    h += '<div class="sk-modal-bd">';
 
-    h += '<div style="margin-top:16px;text-align:right">';
-    h += '<button class="sk-btn" style="background:var(--sk-blue);font-weight:600" '
-      + 'onclick="_vehSubmitDispatch()">&#x1F69A; Xu\u1ea5t xe</button>';
+    /* Banner xanh giải thích sẽ tạo phiếu chi [NÂNG CẤP] */
+    h += '<div class="sk-veh-complete-banner">';
+    h += '<div style="font-size:13px;font-weight:600;color:#10b981;margin-bottom:8px;">'
+      + '&#x1F4CB; H\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng th\u1ef1c hi\u1ec7n:</div>';
+    h += '<div style="font-size:12.5px;color:#94a3b8;line-height:1.7;">';
+    h += '&#x2714;&#xFE0F; Xe <strong style="color:#e2e8f0;">' + plate
+      + '</strong> chuy\u1ec3n tr\u1ea1ng th\u00e1i \u2192 <strong style="color:#10b981;">S\u1eb5n s\u00e0ng</strong><br>';
+    h += '&#x2714;&#xFE0F; C\u1eadp nh\u1eadt s\u1ed1 km (Odometer) m\u1edbi<br>';
+    h += '&#x2714;&#xFE0F; <strong style="color:#f59e0b;">T\u1ef1 t\u1ea1o phi\u1ebfu chi x\u0103ng d\u1ea7u</strong>'
+      + ' trong Finance_Logs';
+    h += '</div>';
     h += '</div>';
 
+    /* Ô nhập odometer + km thực tế */
+    h += '<label class="sk-lbl" style="margin-top:14px;">'
+      + 'S\u1ed1 km Odometer cu\u1ed1i chuy\u1ebfn '
+      + '<em style="color:#64748b;font-weight:400;">\u2014 kh\u00f4ng b\u1eaft bu\u1ed9c</em></label>';
+    h += '<input id="cmp_odo" class="sk-inp" type="number"'
+      + ' placeholder="Nh\u1eadp \u0111\u1ec3 c\u1eadp nh\u1eadt odometer cho xe">';
+
+    h += '<label class="sk-lbl" style="margin-top:12px;">'
+      + 'Km th\u1ef1c t\u1ebf (n\u1ebfu kh\u00e1c d\u1ef1 ki\u1ebfn) '
+      + '<em style="color:#64748b;font-weight:400;">\u2014 kh\u00f4ng b\u1eaft bu\u1ed9c</em></label>';
+    h += '<input id="cmp_dist" class="sk-inp" type="number"'
+      + ' placeholder="B\u1ecf tr\u1ed1ng = gi\u1eef s\u1ed1 km \u0111\u00e3 ghi l\u00fac \u0111i\u1ec1u xe">';
+
+    h += '<label class="sk-lbl" style="margin-top:12px;">Ghi ch\u00fa</label>';
+    h += '<input id="cmp_note" class="sk-inp" type="text"'
+      + ' placeholder="VD: Giao th\u00e0nh c\u00f4ng, kh\u00e1ch kh\u00f4ng c\u00f3 m\u1eb7t...">';
+
     h += '</div>';
-    el.innerHTML = h;
+
+    /* Footer */
+    h += '<div class="sk-modal-ft">';
+    h += '<button class="sk-btn-sm sk-btn-outline" onclick="_removeModal(\'sk-complete-modal\')">H\u1ee7y</button>';
+    h += '<button class="sk-btn" style="background:linear-gradient(135deg,#10b981,#059669);"'
+      + ' onclick="_completeSave(\'' + _esc(plate) + '\')">'
+      + '&#x2705; X\u00e1c nh\u1eadn ho\u00e0n th\u00e0nh</button>';
+    h += '</div></div></div>';
+
+    document.body.appendChild(document.createRange().createContextualFragment(h));
   }
 
-  function _vehSubmitDispatch() {
-    var plate = (getEl('vd-plate') || {}).value;
-    var orderId = (getEl('vd-order') || {}).value;
-    if (!plate) { toast('Vui l\u00f2ng ch\u1ecdn xe!'); return; }
-    if (!orderId) { toast('Vui l\u00f2ng nh\u1eadp m\u00e3 \u0111\u01a1n!'); return; }
+  function _completeSave(plate) {
+    var btn = document.querySelector('[onclick="_completeSave(\'' + plate + '\')"]');
+    if (btn) { btn.disabled = true; btn.textContent = '\u0110ang x\u1eed l\u00fd...'; }
 
-    var body = {
-      plate: plate,
-      order_id: orderId,
-      route_from: (getEl('vd-from') || {}).value || 'Kho S\u01a1n Khang',
-      route_to: (getEl('vd-to') || {}).value || ''
-    };
-
-    api('veh_dispatch', body, function(err, d) {
+    api('veh_complete_trip', {
+      plate:           plate,
+      final_odometer:  _val('cmp_odo'),
+      actual_distance: _val('cmp_dist'),
+      note:            _val('cmp_note')
+    }, function (err, d) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '&#x2705; X\u00e1c nh\u1eadn'; }
+      _removeModal('sk-complete-modal');
       if (err || !d || !d.ok) {
-        toast('L\u1ed7i: ' + (d ? d.error : String(err)));
+        _toast('&#x274C; L\u1ed7i: ' + (d && d.error || '?'), 'error');
         return;
       }
-      toast('\u2705 \u0110\u00e3 xu\u1ea5t xe!\n\n'
-        + 'Log: ' + d.log_id + '\n'
-        + 'Xe: ' + d.plate + '\n'
-        + 'T\u00e0i x\u1ebf: ' + d.driver + '\n'
-        + '\u0110\u01a1n: ' + d.order_id);
-
-      _veh.registry = [];
-      _vehRenderDispatch();
+      /* Toast thông báo chi tiết kết quả [NÂNG CẤP] */
+      var msg = '&#x2705; Xe ' + plate + ' \u0111\u00e3 v\u1ec1!';
+      if (d.finance_created) {
+        msg += ' \u2014 Ph\u1ebfu chi ' + _vnd(d.total_cost) + ' \u0111\u00e3 v\u00e0o Finance_Logs &#x1F4B0;';
+      }
+      _toast(msg, 'ok');
+      /* Cập nhật state local */
+      var reg = window._veh.registry || [];
+      for (var i = 0; i < reg.length; i++) {
+        if (reg[i].plate === plate) {
+          reg[i].status = 'san_sang';
+          if (d.new_odometer) reg[i].odometer = d.new_odometer;
+          break;
+        }
+      }
+      _vehRender();
     });
   }
 
-  // ============================================================
-  // TAB 4: B\u00c1O C\u00c1O TH\u00c1NG
-  // ============================================================
-  function _vehRenderReport() {
-    var el = getEl('veh-content');
-    if (!el) return;
+  /* ============================================================
+   * S8 — TAB BÁO CÁO THÁNG
+   * ============================================================ */
 
+  function _bcRender() {
+    var b = _body();
+    if (!b) return;
+    b.innerHTML = _skelBlock();
     var now = new Date();
-    var monthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-
-    var h = '<div class="sk-panel" style="padding:20px">';
-    h += '<div class="sk-pt" style="font-size:16px;margin-bottom:12px">&#x1F4C8; B\u00e1o c\u00e1o chi ph\u00ed v\u1eadn chuy\u1ec3n</div>';
-
-    h += '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">';
-    h += '<input id="vr-month" class="sk-inp" type="month" value="' + monthStr + '" style="width:180px">';
-    h += '<button class="sk-btn" onclick="_vehLoadReport()">Xem b\u00e1o c\u00e1o</button>';
-    h += '<button class="sk-btn" style="background:var(--sk-purple)" onclick="_vehSyncFin()">&#x1F504; Sync Finance</button>';
-    h += '</div>';
-
-    h += '<div id="vr-body" style="color:#6b7280;padding:40px;text-align:center">'
-      + 'Ch\u1ecdn th\u00e1ng v\u00e0 nh\u1ea5n <strong>"Xem b\u00e1o c\u00e1o"</strong></div>';
-
-    h += '</div>';
-    el.innerHTML = h;
+    api('veh_monthly_report', {
+      month: now.getMonth() + 1,
+      year:  now.getFullYear()
+    }, function (err, d) {
+      var b2 = _body();
+      if (!b2) return;
+      if (err || !d || !d.ok) { b2.innerHTML = _errBox(d && d.error); return; }
+      b2.innerHTML = _bcHtml(d);
+    });
   }
 
-  function _vehLoadReport() {
-    var month = (getEl('vr-month') || {}).value;
-    var el = getEl('vr-body');
-    if (!el) return;
-    el.innerHTML = '<div style="padding:30px;text-align:center;color:#9ca3af">&#x23F3; \u0110ang t\u1ea3i b\u00e1o c\u00e1o...</div>';
+  function _bcHtml(d) {
+    var rows   = d.data || [];
+    var months = [
+      '', 'Th\u00e1ng 1','Th\u00e1ng 2','Th\u00e1ng 3','Th\u00e1ng 4',
+      'Th\u00e1ng 5','Th\u00e1ng 6','Th\u00e1ng 7','Th\u00e1ng 8',
+      'Th\u00e1ng 9','Th\u00e1ng 10','Th\u00e1ng 11','Th\u00e1ng 12'
+    ];
 
-    api('veh_monthly_report', {month: month}, function(err, d) {
-      var el = getEl('vr-body');
-      if (!el) return;
-      if (err || !d || !d.ok) {
-        el.innerHTML = '<div style="color:var(--sk-red);padding:20px">L\u1ed7i: ' + (d ? d.error : String(err)) + '</div>';
-        return;
-      }
+    var h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">';
+    h += '<h3 style="margin:0;font-size:15px;font-weight:700;color:#e2e8f0;">'
+      + '&#x1F4CA; B\u00e1o c\u00e1o ' + months[d.month] + ' ' + d.year + '</h3>';
+    h += '<div style="display:flex;gap:8px;">';
+    h += '<button class="sk-btn-sm sk-btn-outline" onclick="_syncFinance()">'
+      + '&#x21C4; Sync Finance</button>';
+    h += '<button class="sk-btn-sm" onclick="_bcRender()">&#x21BA; L\u00e0m m\u1edbi</button>';
+    h += '</div></div>';
 
-      var rpt = d.report;
-      var vehs = rpt.vehicles || [];
+    /* KPI tổng hợp */
+    var trips = 0; var km = 0; var liters = 0;
+    for (var i = 0; i < rows.length; i++) {
+      trips  += rows[i].trips;
+      km     += rows[i].total_distance;
+      liters += rows[i].total_fuel_liters;
+    }
+    h += '<div class="sk-g5" style="margin-bottom:18px;">';
+    h += _kpiBox('#3b82f6', 'Xe ho\u1ea1t \u0111\u1ed9ng', rows.length,    'xe');
+    h += _kpiBox('#10b981', 'T\u1ed5ng chuy\u1ebfn',       trips,          'chuy\u1ebfn');
+    h += _kpiBox('#f97316', 'T\u1ed5ng km',               Math.round(km), 'km');
+    h += _kpiBox('#f59e0b', 'X\u0103ng ti\u00eau th\u1ee5', (Math.round(liters * 10) / 10) + 'L', '');
+    h += _kpiBox('#ef4444', 'T\u1ed5ng chi ph\u00ed',      _vnd(d.grand_total), '');
+    h += '</div>';
 
-      if (vehs.length === 0) {
-        el.innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280">'
-          + '&#x1F4ED; Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u cho th\u00e1ng ' + esc(month) + '</div>';
-        return;
-      }
+    if (rows.length === 0) {
+      return h + _emptyBox('&#x1F4CA;', 'Ch\u01b0a c\u00f3 d\u1eef li\u1ec7u',
+        'Kh\u00f4ng c\u00f3 chuy\u1ebfn n\u00e0o trong th\u00e1ng n\u00e0y');
+    }
 
-      var h = '<div style="overflow-x:auto">';
-      h += '<table style="width:100%;font-size:13px;border-collapse:collapse;min-width:700px">';
-      h += '<thead><tr style="border-bottom:2px solid rgba(255,255,255,0.1);color:#9ca3af;text-align:left">';
-      h += '<th style="padding:10px 8px">Xe</th>';
-      h += '<th style="padding:10px 8px;text-align:right">Chuy\u1ebfn</th>';
-      h += '<th style="padding:10px 8px;text-align:right">Km</th>';
-      h += '<th style="padding:10px 8px;text-align:right">X\u0103ng (L)</th>';
-      h += '<th style="padding:10px 8px;text-align:right">CP X\u0103ng</th>';
-      h += '<th style="padding:10px 8px;text-align:right">C\u1ea7u \u0111\u01b0\u1eddng</th>';
-      h += '<th style="padding:10px 8px;text-align:right;font-weight:700">T\u1ed5ng CP</th>';
-      h += '<th style="padding:10px 8px;text-align:right">\u0111/km</th>';
-      h += '<th style="padding:10px 8px;text-align:right">Hi\u1ec7u su\u1ea5t</th>';
-      h += '</tr></thead><tbody>';
-
-      for (var i = 0; i < vehs.length; i++) {
-        var v = vehs[i];
-        var effColor = v.fuel_efficiency_pct <= 100 ? 'var(--sk-green)'
-          : v.fuel_efficiency_pct <= 115 ? 'var(--sk-yellow)' : 'var(--sk-red)';
-
-        h += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
-        h += '<td style="padding:8px;font-weight:600;color:var(--sk-blue)">' + esc(v.plate) + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + v.trip_count + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + fmtNum(v.total_distance) + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + v.total_fuel_liters + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + fmtNum(v.total_fuel_cost) + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + fmtNum(v.total_toll) + '</td>';
-        h += '<td style="padding:8px;text-align:right;font-weight:600">' + fmtNum(v.total_cost) + '</td>';
-        h += '<td style="padding:8px;text-align:right">' + fmtNum(v.avg_cost_per_km) + '</td>';
-        h += '<td style="padding:8px;text-align:right;color:' + effColor + ';font-weight:700">' + v.fuel_efficiency_pct + '%</td>';
-        h += '</tr>';
-      }
-
-      // Grand total
-      var gt = rpt.grand_total;
-      h += '<tr style="border-top:2px solid rgba(255,255,255,0.15);font-weight:700">';
-      h += '<td style="padding:10px 8px">T\u1ed5ng</td>';
-      h += '<td style="padding:10px 8px;text-align:right">' + gt.trip_count + '</td>';
-      h += '<td style="padding:10px 8px;text-align:right">' + fmtNum(gt.total_distance) + '</td>';
-      h += '<td style="padding:10px 8px;text-align:right">-</td>';
-      h += '<td style="padding:10px 8px;text-align:right">' + fmtNum(gt.total_fuel_cost) + '</td>';
-      h += '<td style="padding:10px 8px;text-align:right">-</td>';
-      h += '<td style="padding:10px 8px;text-align:right;color:var(--sk-green);font-size:15px">' + fmtNum(gt.total_cost) + ' \u0111</td>';
-      h += '<td colspan="2"></td>';
+    h += '<div class="sk-panel" style="overflow:hidden;padding:0;">';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">';
+    h += '<thead><tr style="background:#1e293b;">';
+    var cols = ['Xe / T\u00e0i x\u1ebf', 'Chuy\u1ebfn', 'Km', 'X\u0103ng (L)', 'CP x\u0103ng', 'Ph\u00ed c\u1ea7u', 'T\u1ed5ng'];
+    for (var c = 0; c < cols.length; c++) {
+      var al = c === 0 ? 'left' : (c === 1 ? 'center' : 'right');
+      h += '<th style="padding:11px 14px;color:#64748b;font-weight:500;text-align:' + al + ';">'
+        + cols[c] + '</th>';
+    }
+    h += '</tr></thead><tbody>';
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var bg  = r % 2 === 0 ? 'transparent' : 'rgba(255,255,255,.018)';
+      h += '<tr style="background:' + bg + ';border-bottom:1px solid #1e293b;">';
+      h += '<td style="padding:11px 14px;">'
+        + '<div style="font-weight:700;color:#f1f5f9;">' + row.plate + '</div>'
+        + '<div style="font-size:11px;color:#64748b;">' + (row.driver_email || '') + '</div>'
+        + '</td>';
+      h += '<td style="padding:11px 14px;text-align:center;color:#94a3b8;">' + row.trips + '</td>';
+      h += '<td style="padding:11px 14px;text-align:right;color:#94a3b8;font-variant-numeric:tabular-nums;">' + row.total_distance + '</td>';
+      h += '<td style="padding:11px 14px;text-align:right;color:#94a3b8;font-variant-numeric:tabular-nums;">' + row.total_fuel_liters + '</td>';
+      h += '<td style="padding:11px 14px;text-align:right;color:#94a3b8;font-variant-numeric:tabular-nums;">' + _vnd(row.total_fuel_cost) + '</td>';
+      h += '<td style="padding:11px 14px;text-align:right;color:#94a3b8;font-variant-numeric:tabular-nums;">' + _vnd(row.total_toll) + '</td>';
+      h += '<td style="padding:11px 14px;text-align:right;font-weight:700;color:#f59e0b;font-variant-numeric:tabular-nums;">' + _vnd(row.total_cost) + '</td>';
       h += '</tr>';
-
-      h += '</tbody></table></div>';
-
-      // Legend
-      h += '<div style="margin-top:12px;font-size:11px;color:#6b7280">'
-        + 'Hi\u1ec7u su\u1ea5t: <span style="color:var(--sk-green)">\u2264100%</span> = \u0111\u00fang/d\u01b0\u1edbi \u0111\u1ecbnh m\u1ee9c, '
-        + '<span style="color:var(--sk-yellow)">101-115%</span> = h\u01a1i v\u01b0\u1ee3t, '
-        + '<span style="color:var(--sk-red)">&gt;115%</span> = v\u01b0\u1ee3t nhi\u1ec1u'
-        + '</div>';
-
-      el.innerHTML = h;
-    });
+    }
+    h += '</tbody></table></div>';
+    return h;
   }
 
-  function _vehSyncFin() {
-    api('veh_sync_finance', {}, function(err, d) {
-      if (d && d.ok) {
-        toast('\u2705 \u0110\u00e3 sync ' + d.synced + ' b\u1ea3n ghi v\u00e0o Finance_Logs');
-      } else {
-        toast('L\u1ed7i sync: ' + (d ? d.error : String(err)));
+  function _syncFinance() {
+    api('veh_sync_finance', {}, function (err, d) {
+      if (err || !d || !d.ok) {
+        _toast('&#x274C; L\u1ed7i sync: ' + (d && d.error || '?'), 'error');
+        return;
       }
+      _toast('&#x2705; \u0110\u00e3 sync ' + d.synced + ' b\u1ea3n ghi \u2192 Finance_Logs', 'ok');
     });
   }
 
-  // ============================================================
-  // EXPOSE TO WINDOW
-  // ============================================================
-  window.loadVehicle       = loadVehicle;
-  window._vehTab           = _vehTab;
-  window._vehRender        = _vehRender;
-  window._vehShowForm      = _vehShowForm;
-  window._vehCloseModal    = _vehCloseModal;
-  window._vehSaveForm      = _vehSaveForm;
-  window._vehOnPlateChange = _vehOnPlateChange;
-  window._vehLiveCalc      = _vehLiveCalc;
-  window._vehSubmitCost    = _vehSubmitCost;
-  window._vehQuickCalc     = _vehQuickCalc;
-  window._vehSubmitDispatch = _vehSubmitDispatch;
-  window._vehLoadReport    = _vehLoadReport;
-  window._vehSyncFin       = _vehSyncFin;
+  /* ============================================================
+   * S9 — SHORTCUT: Mở tab Lệnh và điền sẵn biển số
+   * ============================================================ */
 
-})();
+  function _dispatchOpen(plate) {
+    _vehTab('lenh');
+    setTimeout(function () {
+      var sel = document.getElementById('dsp_plate');
+      if (sel) { sel.value = plate; _dspEstimate(); }
+    }, 350);
+  }
+
+  /* ============================================================
+   * S10 — CSS INJECTION
+   * ============================================================ */
+
+  function _injectCss() {
+    if (document.getElementById('sk-veh-css')) return;
+    var s    = document.createElement('style');
+    s.id     = 'sk-veh-css';
+    var css  = [
+      /* ── Tab bar ── */
+      '.sk-veh-tabbar{display:flex;background:#0a0f1e;border-bottom:1px solid #1e293b;overflow-x:auto;-webkit-overflow-scrolling:touch;}',
+      '.sk-veh-tab{display:flex;align-items:center;gap:7px;padding:13px 20px;background:none;border:none;border-bottom:2px solid transparent;color:#64748b;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:color .2s,border-color .2s;}',
+      '.sk-veh-tab:hover{color:#94a3b8;}',
+      '.sk-veh-tab.active{color:#e2e8f0!important;border-bottom-color:#3b82f6!important;}',
+
+      /* ── Card grid ── */
+      '.sk-veh-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(295px,1fr));gap:16px;}',
+      '.sk-veh-card{background:linear-gradient(135deg,#111827 0%,#0f172a 100%);border:1px solid #1e293b;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:13px;transition:transform .15s,box-shadow .2s;cursor:default;}',
+      '.sk-veh-card:hover{transform:translateY(-3px);}',
+
+      /* ── Info rows ── */
+      '.sk-veh-info{display:flex;flex-direction:column;gap:7px;border-top:1px solid #1e293b;padding-top:12px;}',
+      '.sk-veh-info-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}',
+
+      /* ── Progress bar bảo dưỡng [NÂNG CẤP] ── */
+      '.sk-veh-maint-wrap{background:rgba(255,255,255,.03);border:1px solid #1e293b;border-radius:8px;padding:10px 12px;}',
+      '.sk-veh-maint-bg{height:7px;background:#1e293b;border-radius:4px;overflow:hidden;}',
+      '.sk-veh-maint-fill{height:100%;border-radius:4px;transition:width .4s ease;}',
+
+      /* ── Card cảnh báo ── */
+      '.sk-veh-card-warn{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.18);border-radius:8px;padding:8px 11px;}',
+
+      /* ── Card actions ── */
+      '.sk-veh-card-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px;}',
+      '.sk-btn-sm{padding:6px 13px;font-size:12px;border-radius:8px;border:none;cursor:pointer;font-weight:600;color:#fff;transition:opacity .15s,transform .1s;}',
+      '.sk-btn-sm:hover{opacity:.88;transform:scale(.98);}',
+      '.sk-btn-sm:active{transform:scale(.95);}',
+      '.sk-btn-outline{background:transparent!important;border:1px solid #334155!important;color:#94a3b8!important;}',
+      '.sk-btn-outline:hover{background:#1e293b!important;color:#e2e8f0!important;}',
+
+      /* ── Alert bar top ── */
+      '.sk-veh-alert-bar{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.22);border-radius:10px;padding:13px 16px;}',
+
+      /* ── Calculator ── */
+      '.sk-veh-calc-wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px;}',
+      /* Toll section [NÂNG CẤP] */
+      '.sk-veh-toll-section{background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px;margin-top:12px;}',
+      /* Breakdown chart [NÂNG CẤP] */
+      '.sk-veh-breakdown{background:rgba(255,255,255,.03);border-radius:8px;padding:10px 12px;margin-top:6px;}',
+      '.sk-veh-bar-wrap{height:10px;border-radius:5px;overflow:hidden;display:flex;background:#1e293b;}',
+      '.sk-veh-bar-f{background:#3b82f6;transition:width .35s ease;}',
+      '.sk-veh-bar-t{background:#f59e0b;transition:width .35s ease;}',
+      '.sk-veh-bar-o{background:#8b5cf6;transition:width .35s ease;}',
+      /* Total box */
+      '.sk-veh-total-box{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.22);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px;}',
+      /* Notice */
+      '.sk-veh-notice-warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:8px 12px;font-size:12px;color:#f59e0b;margin-bottom:12px;}',
+      '.sk-veh-notice-ok{background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.18);border-radius:8px;padding:8px 12px;font-size:12px;color:#10b981;margin-bottom:12px;}',
+
+      /* ── Dispatch / Lệnh ── */
+      '.sk-veh-lenh-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;}',
+      /* Order item [NÂNG CẤP] */
+      '.sk-veh-order-item{background:rgba(255,255,255,.03);border:1px solid #1e293b;border-radius:9px;padding:12px 14px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s;}',
+      '.sk-veh-order-item:hover{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.35);transform:scale(1.01);}',
+      '.sk-veh-ready-item{background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.18);border-radius:9px;padding:12px 14px;}',
+      /* Estimate box [NÂNG CẤP] */
+      '.sk-veh-dsp-estimate{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:9px;padding:12px 14px;}',
+
+      /* ── Complete banner [NÂNG CẤP] ── */
+      '.sk-veh-complete-banner{background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.22);border-radius:10px;padding:14px 16px;margin-bottom:4px;}',
+
+      /* ── Modal ── */
+      '.sk-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;}',
+      '.sk-modal-box{background:#0f172a;border:1px solid #1e293b;border-radius:16px;width:100%;max-width:600px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.9);}',
+      '.sk-modal-hd{display:flex;justify-content:space-between;align-items:center;padding:17px 22px;border-bottom:1px solid #1e293b;font-size:14.5px;font-weight:700;color:#e2e8f0;}',
+      '.sk-modal-bd{padding:18px 22px;}',
+      '.sk-modal-ft{display:flex;justify-content:flex-end;gap:9px;padding:14px 22px;border-top:1px solid #1e293b;}',
+      '.sk-modal-close{background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;}',
+      '.sk-modal-close:hover{color:#e2e8f0;}',
+
+      /* ── Form grid 2 cột ── */
+      '.sk-fg2{display:grid;grid-template-columns:1fr 1fr;gap:13px;}',
+      '.sk-lbl{display:block;font-size:11.5px;color:#94a3b8;margin-bottom:4px;font-weight:500;}',
+
+      /* ── KPI ── */
+      '.sk-veh-kpi{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:3px;}',
+
+      /* ── Badge ── */
+      '.sk-badge{border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:700;white-space:nowrap;}',
+
+      /* ── Toast animation ── */
+      '@keyframes sk-ti{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}',
+
+      /* ── Responsive ── */
+      '@media(max-width:768px){.sk-veh-calc-wrap,.sk-veh-lenh-wrap,.sk-veh-grid{grid-template-columns:1fr;}.sk-fg2{grid-template-columns:1fr;}.sk-veh-tabbar{flex-wrap:nowrap;overflow-x:auto;}}'
+    ];
+    s.textContent = css.join('');
+    document.head.appendChild(s);
+  }
+
+  /* ============================================================
+   * S11 — SHARED HELPERS
+   * ============================================================ */
+
+  function _vnd(n) {
+    if (typeof fv === 'function') return fv(n);
+    n = Number(n) || 0;
+    if (n >= 1e9) return (Math.round(n / 1e7) / 100) + ' t\u1ef7';
+    if (n >= 1e6) return (Math.round(n / 1e4) / 100) + ' tr';
+    return n.toLocaleString('vi-VN') + '\u0111';
+  }
+
+  function _num(n) { return (Number(n) || 0).toLocaleString('vi-VN'); }
+
+  function _fmtDate(s) {
+    if (!s) return '\u2014';
+    var d = new Date(s);
+    if (isNaN(d.getTime())) return String(s);
+    return d.getDate() + '/' + (d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
+  function _esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function _val(id) {
+    var e = document.getElementById(id);
+    return e ? e.value : '';
+  }
+
+  function _statusColor(s) {
+    return { san_sang: '#10b981', dang_giao: '#3b82f6', bao_duong: '#f59e0b', ngung: '#ef4444' }[s] || '#64748b';
+  }
+
+  function _statusBadge(s) {
+    var lbl = { san_sang: 'S\u1eb5n s\u00e0ng', dang_giao: '\u0110ang giao', bao_duong: 'B\u1ea3o d\u01b0\u1ee1ng', ngung: 'Ng\u01b0ng' };
+    var c   = _statusColor(s);
+    return '<span class="sk-badge" style="background:' + c + '1a;color:' + c + ';border:1px solid ' + c + '33;">'
+      + (lbl[s] || s) + '</span>';
+  }
+
+  function _daysColor(status) {
+    if (status === 'expired') return '#ef4444';
+    if (status === 'urgent')  return '#f97316';
+    if (status === 'warn')    return '#f59e0b';
+    return '#10b981';
+  }
+
+  function _typeName(t) {
+    return { xe_tai: 'Xe t\u1ea3i', xe_may: 'Xe m\u00e1y', xe_lanh: 'Xe l\u1ea1nh' }[t] || t;
+  }
+  function _typeIcon(t) {
+    return { xe_tai: '&#x1F69A;', xe_may: '&#x1F6F5;', xe_lanh: '&#x1F699;' }[t] || '&#x1F697;';
+  }
+  function _fuelName(t) {
+    return { xang_ron95: 'RON 95', xang_ron92: 'RON 92', dau_diesel: 'Diesel' }[t] || t;
+  }
+
+  function _opt(val, label, current) {
+    return '<option value="' + val + '"' + (current === val ? ' selected' : '') + '>' + label + '</option>';
+  }
+
+  function _kpiBox(color, label, value, sub) {
+    if (typeof kpi === 'function') return kpi(color, label, value, sub);
+    return '<div class="sk-veh-kpi" style="border-top:3px solid ' + color + ';">'
+      + '<div style="font-size:11.5px;color:#64748b;">' + label + '</div>'
+      + '<div style="font-size:21px;font-weight:700;color:#e2e8f0;font-variant-numeric:tabular-nums;">' + value + '</div>'
+      + (sub ? '<div style="font-size:11px;color:#64748b;">' + sub + '</div>' : '')
+      + '</div>';
+  }
+
+  function _skelBlock() {
+    if (typeof skel === 'function') return skel();
+    return '<div style="text-align:center;padding:60px;color:#64748b;font-size:13px;">'
+      + '<div style="width:32px;height:32px;border:2px solid #334155;border-top-color:#3b82f6;'
+      + 'border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div>'
+      + '\u0110ang t\u1ea3i d\u1eef li\u1ec7u...</div>'
+      + '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>';
+  }
+
+  function _errBox(msg) {
+    return '<div style="padding:20px;color:#ef4444;background:rgba(239,68,68,.06);'
+      + 'border:1px solid rgba(239,68,68,.2);border-radius:10px;font-size:13px;">'
+      + '&#x274C; L\u1ed7i: ' + _esc(msg || 'Kh\u00f4ng r\u00f5. Ki\u1ec3m tra GAS v\u00e0 r\u1ea3d\u1eb7t l\u1ea1i.') + '</div>';
+  }
+
+  function _emptyBox(icon, title, desc) {
+    if (typeof emptyState === 'function') return emptyState(icon, title, desc);
+    return '<div style="text-align:center;padding:48px 24px;color:#64748b;">'
+      + '<div style="font-size:38px;margin-bottom:12px;">' + icon + '</div>'
+      + '<div style="font-size:14px;color:#94a3b8;font-weight:600;margin-bottom:6px;">' + title + '</div>'
+      + '<div style="font-size:12.5px;">' + desc + '</div></div>';
+  }
+
+  function _toast(msg, type) {
+    var old = document.getElementById('sk-veh-toast');
+    if (old) old.remove();
+    var bg = type === 'ok'    ? 'rgba(16,185,129,.15)'
+           : type === 'warn'  ? 'rgba(245,158,11,.15)'
+           : 'rgba(239,68,68,.15)';
+    var bd = type === 'ok' ? '#10b981' : type === 'warn' ? '#f59e0b' : '#ef4444';
+    var el = document.createElement('div');
+    el.id  = 'sk-veh-toast';
+    el.setAttribute('style',
+      'position:fixed;bottom:22px;right:22px;z-index:99999;'
+      + 'background:' + bg + ';border:1px solid ' + bd + ';border-radius:11px;'
+      + 'padding:12px 18px;color:#e2e8f0;font-size:13px;max-width:360px;'
+      + 'box-shadow:0 8px 32px rgba(0,0,0,.7);animation:sk-ti .2s ease;'
+      + 'pointer-events:none;line-height:1.5;'
+    );
+    el.innerHTML = msg;
+    document.body.appendChild(el);
+    setTimeout(function () {
+      el.style.opacity = '0';
+      el.style.transition = 'opacity .3s';
+      setTimeout(function () { if (el.parentNode) el.remove(); }, 320);
+    }, 4000);
+  }
+
+  function _removeModal(id) {
+    var m = document.getElementById(id);
+    if (m) m.remove();
+  }
+
+  function _closeModal(id, e) {
+    if (e && e.target && e.target.id === id) _removeModal(id);
+  }
+
+  /* ============================================================
+   * S12 — EXPOSE RA WINDOW + KHỞI ĐỘNG CSS
+   * ============================================================ */
+
+  _injectCss();
+
+  window.loadVehicle        = loadVehicle;
+  window.loadPhuongTien     = loadPhuongTien;
+  window._vehTab            = _vehTab;
+  window._vehRender         = _vehRender;
+  window._vehOpenForm       = _vehOpenForm;
+  window._vehSaveForm       = _vehSaveForm;
+  window._calcFillQuota     = _calcFillQuota;
+  window._calcTollPre       = _calcTollPre;
+  window._calcLive          = _calcLive;
+  window._calcVerify        = _calcVerify;
+  window._calcSave          = _calcSave;
+  window._lenhFill          = _lenhFill;
+  window._dspEstimate       = _dspEstimate;
+  window._dspExec           = _dspExec;
+  window._dispatchOpen      = _dispatchOpen;
+  window._completeOpen      = _completeOpen;
+  window._completeSave      = _completeSave;
+  window._syncFinance       = _syncFinance;
+  window._removeModal       = _removeModal;
+  window._closeModal        = _closeModal;
+
+}());

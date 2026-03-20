@@ -77,13 +77,15 @@
     h += '<div style="font-size:20px;font-weight:800;color:#f1f5f9;">SonKhang ERP</div>';
     h += '<div style="font-size:12.5px;color:#64748b;margin-top:4px;">v3.5 \u2014 \u0110\u0103ng nh\u1eadp h\u1ec7 th\u1ed1ng</div>';
     h += '</div>';
-    /* Google GSI button */
-    h += '<div id="g_id_onload" data-client_id="' + _esc(_GCID) + '" data-callback="_authGoogleCallback" data-auto_prompt="false"></div>';
-    h += '<div id="sk-google-btn" style="margin-bottom:18px;">';
-    h += '<div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large" data-width="100%" data-text="signin_with" data-shape="rectangular" data-logo_alignment="left"></div>';
-    h += '</div>';
-    /* Divider */
-    h += '<div class="sk-auth-divider"><span>ho\u1eb7c \u0111\u0103ng nh\u1eadp b\u1eb1ng m\u1eadt kh\u1ea9u</span></div>';
+    /* Google GSI button — chi render khi da cau hinh GOOGLE_CLIENT_ID */
+    if (_GCID) {
+      h += '<div id="g_id_onload" data-client_id="' + _esc(_GCID) + '" data-callback="_authGoogleCallback" data-auto_prompt="false"></div>';
+      h += '<div id="sk-google-btn" style="margin-bottom:18px;">';
+      /* data-width PHAI la so px nguyen, KHONG dung % hoac auto */
+      h += '<div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large" data-width="360" data-text="signin_with" data-shape="rectangular" data-logo_alignment="left"></div>';
+      h += '</div>';
+      h += '<div class="sk-auth-divider"><span>ho\u1eb7c \u0111\u0103ng nh\u1eadp b\u1eb1ng m\u1eadt kh\u1ea9u</span></div>';
+    }
     /* Error box */
     h += '<div id="sk-login-err" class="sk-auth-err" style="display:none;margin-bottom:14px;"></div>';
     /* Email */
@@ -484,6 +486,8 @@
    * S6 - GOOGLE GSI LOADER
    * ============================================================ */
   function _loadGSI() {
+    /* Chi load GSI script khi da cau hinh GOOGLE_CLIENT_ID */
+    if (!_GCID) return;
     if(document.getElementById('sk-gsi-script'))return;
     var s=document.createElement('script'); s.id='sk-gsi-script';
     s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;

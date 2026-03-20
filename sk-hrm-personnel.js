@@ -6,6 +6,19 @@
 (function () {
   'use strict';
 
+  var _BANKS_VN = ['Vietcombank','Vietinbank','BIDV','Agribank','Techcombank',
+    'MB Bank','ACB','VPBank','TPBank','Sacombank','HDBank','VIB','OCB','SHB',
+    'SeABank','LienVietPostBank','BacABank','NCB','ABBank','NamABank','Eximbank',
+    'MSB','Kienlongbank','PGBank','VietABank','BVBank','PVcomBank','CBBank','GPBank','OceanBank'];
+
+  function _bankOpts(cur) {
+    var opts = '<option value="">-- Ch\u1ecdn ng\u00e2n h\u00e0ng --</option>';
+    _BANKS_VN.forEach(function(b) {
+      opts += '<option value="'+b+'"'+(cur===b?' selected':'')+'>'+b+'</option>';
+    });
+    return opts;
+  }
+
   var _ROLES = [
     { code:'GD', name:'Gi\u00e1m \u0111\u1ed1c',   base:25000000 },
     { code:'KT', name:'K\u1ebf to\u00e1n',          base:12000000 },
@@ -288,14 +301,15 @@
       +     _inp('hrm-f-email',   'Email c\u00f4ng ty',              v('email'),        'email')
       +     _inp('hrm-f-idcard',  'CMND / CCCD',                     v('id_card'),      'text')
       +     _inp('hrm-f-birthday','Ng\u00e0y sinh',                  _isoDate(v('birthday')), 'date')
-      +     _inp('hrm-f-gender',  'Gi\u1edbi t\u00ednh', '',         'select', false, '',
-      +          '<option' + (e&&e.gender==='Nam'?' selected':'') + '>Nam</option>'
-      +          + '<option' + (e&&e.gender==='N\u1eef'?' selected':'') + '>N\u1eef</option>')
+      +     _inp('hrm-f-gender',  'Gi\u1edbi t\u00ednh', '', 'select', false, '',
+      +          '<option value="Nam"' + (e&&e.gender==='Nam'?' selected':'') + '>Nam</option>'
+      +          + '<option value="N\u1eef"' + (e&&e.gender==='N\u1eef'?' selected':'') + '>N\u1eef</option>'
+      +          + '<option value="Kh\u00e1c"' + (e&&e.gender==='Kh\u00e1c'?' selected':'') + '>Kh\u00e1c</option>')
       +     _inp('hrm-f-start',   'Ng\u00e0y v\u00e0o l\u00e0m',    _isoDate(v('start_date')), 'date')
       +     _inp('hrm-f-salary',  'L\u01b0\u01a1ng c\u01a1 b\u1ea3n', e ? String(e.base_salary||0) : '', 'number')
       +     _inp('hrm-f-bank',    'S\u1ed1 t\u00e0i kho\u1ea3n',    v('bank_account'), 'text')
-      +     _inp('hrm-f-bankname','Ng\u00e2n h\u00e0ng',             v('bank_name'),    'text')
-      +     _inp('hrm-f-address', '\u0110\u1ecba ch\u1ec9',          v('address'),      'text',   false, 'full')
+      +     _inp('hrm-f-bankname','Ng\u00e2n h\u00e0ng', '', 'select', false, '', _bankOpts(v('bank_name')))
+      +     _addrFields(v('address'))
       +     _inp('hrm-f-note',    'Ghi ch\u00fa',                    v('note'),         'text',   false, 'full')
       +   '</div>'
       + '</div>'
@@ -321,6 +335,42 @@
       });
     }
   }
+
+  function _addrFields(curAddr) {
+    /* Parse địa chỉ cũ: 'Số nhà, Quận, Tỉnh' */
+    var parts = (curAddr||'').split(',').map(function(s){return s.trim();});
+    var house  = parts[0]||'';
+    var dist   = parts[1]||'';
+    var prov   = parts.slice(2).join(', ')||'';
+    var provOpts = '<option value="">-- Tỉnh/TP --</option>';
+    if (window._ADDR_DATA) {
+      Object.keys(window._ADDR_DATA).sort().forEach(function(p){
+        provOpts += '<option value="'+_esc(p)+'"'+(prov===p?' selected':'')+'>'+_esc(p)+'</option>';
+      });
+    }
+    var distOpts = '<option value="">-- Quận/Huyện --</option>';
+    var curDists = (window._ADDR_DATA&&window._ADDR_DATA[prov])||[];
+    curDists.forEach(function(d){
+      distOpts += '<option value="'+_esc(d)+'"'+(dist===d?' selected':'')+'>'+_esc(d)+'</option>';
+    });
+    return '<div class="hrm-form-group full">'
+      + '<label class="hrm-lbl">Địa chỉ</label>'
+      + '<input id="hrm-f-house" class="form-input" placeholder="Số nhà, tên đường..." value="'+_esc(house)+'" style="margin-bottom:6px;">'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">'
+      + '<select id="hrm-f-province" class="form-input" onchange="_addrUpdateDistrict()">'
+      + provOpts+'</select>'
+      + '<select id="hrm-f-district" class="form-input">'+distOpts+'</select>'
+      + '</div></div>';
+  }
+  window._addrUpdateDistrict = function() {
+    var pSel = document.getElementById('hrm-f-province');
+    var dSel = document.getElementById('hrm-f-district');
+    if (!pSel||!dSel) return;
+    var prov = pSel.value;
+    var dists = (window._ADDR_DATA&&window._ADDR_DATA[prov])||[];
+    dSel.innerHTML = '<option value="">-- Quận/Huyện --</option>'
+      + dists.map(function(d){return '<option value="'+_esc(d)+'">'+_esc(d)+'</option>';}).join('');
+  };
 
   function _inp(id, label, val, type, required, extra, opts) {
     var cls = 'hrm-form-group' + (extra === 'full' ? ' full' : '');
@@ -354,7 +404,12 @@
       gender       : _gv('hrm-f-gender'),
       phone        : _gv('hrm-f-phone'),
       email        : _gv('hrm-f-email'),
-      address      : _gv('hrm-f-address'),
+      address      : (function(){
+        var h = (_gv('hrm-f-house')||'').trim();
+        var d = (_gv('hrm-f-district')||'').trim();
+        var p = (_gv('hrm-f-province')||'').trim();
+        return [h,d,p].filter(function(s){return s;}).join(', ');
+      })(),
       start_date   : _gv('hrm-f-start'),
       base_salary  : Number(_gv('hrm-f-salary')||0),
       bank_account : _gv('hrm-f-bank'),

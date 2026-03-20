@@ -34,7 +34,7 @@
       +'<div id="pay-content"></div></div>';
     _payLoad();
   }
-  window.loadPayroll=loadPayroll; window.loadKeToán=loadPayroll;
+  window.loadPayroll=loadPayroll; window.loadKeToan=loadPayroll;
 
   function _payTabSwitch(tab){
     ['list','advance'].forEach(function(t){var b=document.getElementById('pt-'+t);if(b)b.classList.toggle('active',t===tab);});
@@ -64,7 +64,7 @@
         +'<div class="hrm-kpi card"><div class="hrm-kpi-lbl">\ud83d\udcb0 T\u1ed5ng chi</div><div class="hrm-kpi-val" style="color:var(--green);">'+_fv(d.total_net)+'</div></div>'
         +'<div class="hrm-kpi card"><div class="hrm-kpi-lbl">\u2b50 Cao nh\u1ea5t</div><div class="hrm-kpi-val" style="color:var(--yellow);">'+_fv(rows[0].net)+'</div></div>'
         +'<div class="hrm-kpi card"><div class="hrm-kpi-lbl">\ud83d\udd0d Tr\u1ea1ng th\u00e1i</div>'
-        +'<div class="hrm-kpi-val" style="color:'+(isDuyet?'var(--green)':'var(--yellow))+';font-size:13px;">'+(isDuyet?'\u2705 \u0110\u00e3 duy\u1ec7t':'\u23f3 Ch\u1edd duy\u1ec7t')+'</div></div>'
+        +'<div class="hrm-kpi-val" style="color:'+(isDuyet?'var(--green)':'var(--yellow)')+';font-size:13px;">'+(isDuyet?'\u2705 \u0110\u00e3 duy\u1ec7t':'\u23f3 Ch\u1edd duy\u1ec7t')+'</div></div>'
         +'</div>'
         +'<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">'
         +(!isDuyet?'<button class="btn-primary" onclick="_payApprove(\'duyet\')" style="font-size:11px;">\u2714 Ph\u00ea duy\u1ec7t b\u1ea3ng l\u01b0\u01a1ng</button>':'')

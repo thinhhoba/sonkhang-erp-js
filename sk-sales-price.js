@@ -7,6 +7,21 @@
   'use strict';
 
   var _api   = function () { return typeof window.api==='function'?window.api:typeof api==='function'?api:null; };
+
+  /* Dùng chung modal từ sk-sales-orders.js (đã load trước) */
+  function _getModal()  { return typeof window.showSalesModal==='function'  ? window.showSalesModal  : _soModal; }
+  function _getClose()  { return typeof window.closeSalesModal==='function' ? window.closeSalesModal : _soClose; }
+  function _soModal(h,s) {
+    _soClose();
+    var ov=document.createElement('div'); ov.id='sk-sales-modal';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    var box=document.createElement('div');
+    box.style.cssText='background:var(--bg2,#0f1117);border:1px solid var(--border2,#252d40);border-radius:18px;max-height:90vh;overflow-y:auto;width:100%;max-width:'+(s==='lg'?'820px':'560px')+';';
+    box.innerHTML=h; ov.appendChild(box);
+    ov.addEventListener('click',function(e){if(e.target===ov) _soClose();});
+    document.body.appendChild(ov);
+  }
+  function _soClose() { var el=document.getElementById('sk-sales-modal'); if(el&&el.parentNode) el.parentNode.removeChild(el); }
   var _esc   = function (s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
   var _gv    = function (id) { var e=document.getElementById(id); return e?e.value:''; };
   var _sv    = function (id,v) { var e=document.getElementById(id); if(e) e.value=v; };
@@ -267,7 +282,7 @@
       + '</div></div>'
       + '<div class="sk-modal-ft"><button class="btn-ghost" onclick="closeSalesModal()">Hủy</button>'
       + '<button class="btn-primary" onclick="_spSaveDis('+(ck?'\''+_esc(ck.id)+'\'':'\'\'')+')">💾 Lưu</button></div>';
-    if (typeof window.showSalesModal==='function') window.showSalesModal(html);
+    _getModal()(html);
   }
   window._spEditDiscount = function(id) {
     var apiF=_api(); if(!apiF) return;
@@ -290,7 +305,7 @@
     },function(e,d){
       if(e||!d||!d.ok){_toast((d&&d.error)||'Lỗi','error');return;}
       _toast('✅ Đã lưu chương trình','ok');
-      if(typeof window.closeSalesModal==='function') window.closeSalesModal();
+      _getClose()();
       _loadDiscounts();
     });
   };
@@ -426,7 +441,7 @@
       +'</div></div>'
       +'<div class="sk-modal-ft"><button class="btn-ghost" onclick="closeSalesModal()">Hủy</button>'
       +'<button class="btn-primary" onclick="_khSave('+(k?'\''+_esc(k.id)+'\'':'\'\'')+')">💾 Lưu</button></div>';
-    if(typeof window.showSalesModal==='function') window.showSalesModal(html);
+    _getModal()(html);
   }
   window._spShowCustomerForm = _spShowCustomerForm;
 
@@ -438,7 +453,7 @@
     function(e,d){
       if(e||!d||!d.ok){_toast((d&&d.error)||'Lỗi','error');return;}
       _toast('✅ Đã lưu khách hàng','ok');
-      if(typeof window.closeSalesModal==='function') window.closeSalesModal();
+      _getClose()();
       _loadCustomers();
     });
   };

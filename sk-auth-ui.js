@@ -506,70 +506,91 @@
   }
 
   function _authGoogleFallback() {
-    /* Google OAuth Popup - localStorage bridge (tranh COOP block)
+    /* Google OAuth - BroadcastChannel bridge (industry standard solution)
      *
-     * COOP chặn: popup.closed, popup.location → KHÔNG dùng poll popup
-     * Giải pháp: popup redirect về CÙNG origin → trang chính đọc localStorage
+     * Research confirms (osm-auth Jul 2025, MSAL, Next.js):
+     *   - "window.closed" COOP warning = Google report-only header, CANH BAO THOI
+     *   - BroadcastChannel: same-origin, khong bi COOP block
+     *   - localStorage: same-origin top-level tabs, khong bi partition
      *
-     * Luồng:
-     *   1. Xoá sk_oauth_token cũ khỏi localStorage
-     *   2. Mở popup → Google OAuth → redirect về origin với #id_token=xxx
-     *   3. Khi popup load lại trang → _checkOAuthHash() phát hiện id_token
-     *      → ghi vào localStorage('sk_oauth_token')
-     *   4. Parent poll localStorage mỗi 400ms (không bị COOP)
-     *   5. Lấy được token → gọi _authGoogleCallback()
+     * Luong:
+     *   1. Parent lang nghe BroadcastChannel 'sk_oauth'
+     *   2. Mo popup → Google OAuth → redirect ve erp.sonkhang.vn#id_token=xxx
+     *   3. Popup load trang → _checkOAuthHash() phat hien token
+     *      → gui BroadcastChannel.postMessage({token})
+     *      → fallback: localStorage.setItem
+     *   4. Parent nhan message → _authGoogleCallback(token)
      */
     var gcid = _gcid();
     if (!gcid) { _authErrShow('sk-login-err', 'Chưa cấu hình Google Client ID'); return; }
 
-    /* Xoá token cũ */
+    /* Don dep */
     try { localStorage.removeItem('sk_oauth_token'); } catch(e) {}
 
     var origin  = window.location.origin;
     var nonce   = Math.random().toString(36).substr(2) + Date.now();
     var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
-      + '?client_id='     + encodeURIComponent(gcid)
-      + '&redirect_uri='  + encodeURIComponent(origin)
+      + '?client_id='    + encodeURIComponent(gcid)
+      + '&redirect_uri=' + encodeURIComponent(origin)
       + '&response_type=id_token'
       + '&scope=openid%20email%20profile'
-      + '&nonce='         + nonce;
+      + '&nonce='        + nonce;
 
-    /* Mở popup */
+    /* Hien trang thai */
+    var errEl = document.getElementById('sk-login-err');
+    if (errEl) {
+      errEl.style.display = 'block';
+      errEl.style.color   = '#60a5fa';
+      errEl.style.background = 'rgba(59,130,246,.08)';
+      errEl.style.borderColor = 'rgba(59,130,246,.25)';
+      errEl.innerHTML = '&#x23F3; Đang chờ xác thực Google...';
+    }
+
+    var done = false;
+    function onToken(tok) {
+      if (done) return;
+      done = true;
+      if (bc) { try { bc.close(); } catch(e) {} }
+      clearInterval(lsPoll);
+      try { localStorage.removeItem('sk_oauth_token'); } catch(e) {}
+      _authGoogleCallback({ credential: tok });
+    }
+
+    /* 1. BroadcastChannel - real-time, same-origin, KHONG bi COOP block */
+    var bc = null;
+    try {
+      bc = new BroadcastChannel('sk_oauth');
+      bc.onmessage = function(ev) {
+        if (ev.data && ev.data.token) onToken(ev.data.token);
+      };
+    } catch(e) { bc = null; }
+
+    /* 2. localStorage polling - fallback neu BroadcastChannel khong co */
+    var lsAttempts = 0;
+    var lsPoll = setInterval(function() {
+      if (done) { clearInterval(lsPoll); return; }
+      lsAttempts++;
+      if (lsAttempts > 300) {
+        clearInterval(lsPoll);
+        if (!done) _authErrShow('sk-login-err', 'Hết thời gian. Vui lòng thử lại.');
+        return;
+      }
+      var tok = '';
+      try { tok = localStorage.getItem('sk_oauth_token') || ''; } catch(e) {}
+      if (tok) onToken(tok);
+    }, 500);
+
+    /* Mo popup */
     var popup = window.open(authUrl, 'sk_google_oauth',
       'width=480,height=600,'
       + 'left=' + Math.round((screen.width  - 480) / 2) + ','
       + 'top='  + Math.round((screen.height - 600) / 2));
 
     if (!popup) {
-      /* Popup bị chặn → chuyển hướng trang chính */
+      /* Popup bi block → redirect trang chinh */
       try { localStorage.setItem('sk_oauth_redirect', '1'); } catch(e) {}
       window.location.href = authUrl;
-      return;
     }
-
-    /* Hiện trạng thái đang chờ */
-    _authErrShow('sk-login-err', 'Đang chờ xác thực Google...');
-    var btn = document.getElementById('sk-login-err');
-    if (btn) btn.style.color = '#60a5fa';
-
-    /* Poll localStorage - KHÔNG bị COOP block */
-    var attempts = 0;
-    var maxAttempts = 300; /* 2 phut */
-    var poll = setInterval(function() {
-      attempts++;
-      if (attempts > maxAttempts) {
-        clearInterval(poll);
-        _authErrShow('sk-login-err', 'Hết thời gian chờ. Vui lòng thử lại.');
-        return;
-      }
-      var tok = '';
-      try { tok = localStorage.getItem('sk_oauth_token') || ''; } catch(e) {}
-      if (!tok) return;
-      /* Có token */
-      clearInterval(poll);
-      try { localStorage.removeItem('sk_oauth_token'); } catch(e) {}
-      _authGoogleCallback({ credential: tok });
-    }, 400);
   }
 
   /* _checkOAuthHash() - goi khi trang load, kiem tra co id_token trong URL hash khong
@@ -581,19 +602,34 @@
       var m    = hash.match(/[#&]id_token=([^&]+)/);
       if (!m) return false;
       var token = decodeURIComponent(m[1]);
-      localStorage.setItem('sk_oauth_token', token);
+
       /* Xoa hash khoi URL */
       if (window.history && window.history.replaceState) {
         window.history.replaceState(null, '', window.location.pathname);
       }
-      /* Neu la popup → tu dong dong */
-      if (window.opener) {
-        setTimeout(function() { window.close(); }, 300);
+
+      /* Gui token ve parent qua BroadcastChannel (real-time) + localStorage (fallback) */
+      try {
+        var bc = new BroadcastChannel('sk_oauth');
+        bc.postMessage({ token: token });
+        setTimeout(function() { try { bc.close(); } catch(e) {} }, 1000);
+      } catch(e) {}
+      try { localStorage.setItem('sk_oauth_token', token); } catch(e) {}
+
+      /* Neu la popup → dong sau 500ms */
+      if (window.opener !== undefined) {
+        /* Khong check window.opener (bi COOP set null) - chi check la popup bang URL */
+        setTimeout(function() {
+          try { window.close(); } catch(e) {}
+        }, 500);
         return true;
       }
+
       /* Neu la redirect trang chinh → xu ly luon */
       try { localStorage.removeItem('sk_oauth_redirect'); } catch(e) {}
-      _authGoogleCallback({ credential: token });
+      if (typeof _authGoogleCallback === 'function') {
+        _authGoogleCallback({ credential: token });
+      }
       return true;
     } catch(e) { return false; }
   }

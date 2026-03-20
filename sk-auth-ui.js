@@ -79,10 +79,37 @@
     h += '</div>';
     /* Google GSI button — chi render khi da cau hinh GOOGLE_CLIENT_ID */
     if (_gcid()) {
-      h += '<div id="g_id_onload" data-client_id="' + _esc(_gcid()) + '" data-callback="_authGoogleCallback" data-auto_prompt="false"></div>';
+      /* Google One Tap / Button
+         Blogger them COOP: same-origin header → block GSI iframe postMessage
+         Fix: dung ux_mode="popup" voi itp_support="true" + FedCM
+         Neu van loi → fallback sang button mo window moi */
+      h += '<div id="g_id_onload"'
+        + ' data-client_id="' + _gcid() + '"'
+        + ' data-callback="_authGoogleCallback"'
+        + ' data-auto_prompt="false"'
+        + ' data-itp_support="true"'
+        + '></div>';
       h += '<div id="sk-google-btn" style="margin-bottom:18px;">';
-      /* data-width PHAI la so px nguyen, KHONG dung % hoac auto */
-      h += '<div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large" data-width="360" data-text="signin_with" data-shape="rectangular" data-logo_alignment="left"></div>';
+      h += '<div class="g_id_signin"'
+        + ' data-type="standard"'
+        + ' data-theme="filled_black"'
+        + ' data-size="large"'
+        + ' data-width="360"'
+        + ' data-text="signin_with"'
+        + ' data-shape="rectangular"'
+        + ' data-logo_alignment="left"'
+        + '></div>';
+      h += '</div>';
+      /* Fallback button - dung CSS class thay inline onmouseover/onmouseout */
+      h += '<div id="sk-google-fallback" style="display:none;margin-bottom:18px;">';
+      h += '<button class="sk-google-fallback-btn" onclick="_authGoogleFallback()">'
+        + '<svg width="18" height="18" viewBox="0 0 24 24" style="flex-shrink:0;">'
+        + '<path fill="#4285f4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>'
+        + '<path fill="#34a853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>'
+        + '<path fill="#fbbc05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>'
+        + '<path fill="#ea4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>'
+        + '</svg>'
+        + 'Đăng nhập bằng Google</button>';
       h += '</div>';
       h += '<div class="sk-auth-divider"><span>ho\u1eb7c \u0111\u0103ng nh\u1eadp b\u1eb1ng m\u1eadt kh\u1ea9u</span></div>';
     }
@@ -492,6 +519,51 @@
     var s=document.createElement('script'); s.id='sk-gsi-script';
     s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
     document.head.appendChild(s);
+    /* Sau 3s: neu GSI chua render duoc button (COOP block) → show fallback */
+    setTimeout(function() {
+      var gsiBtn = document.querySelector('.g_id_signin iframe');
+      var fallback = document.getElementById('sk-google-fallback');
+      var gsiWrap  = document.getElementById('sk-google-btn');
+      if (!gsiBtn && fallback) {
+        fallback.style.display = 'block';
+        if (gsiWrap) gsiWrap.style.display = 'none';
+      }
+    }, 3000);
+  }
+
+  function _authGoogleFallback() {
+    /* Fallback: mo cua so popup OAuth khi GSI bi COOP block */
+    var gcid = _gcid();
+    if (!gcid) { _authErrShow('sk-login-err', 'Chưa cấu hình Google Client ID'); return; }
+    var origin   = window.location.origin;
+    var params   = 'client_id=' + encodeURIComponent(gcid)
+      + '&redirect_uri=' + encodeURIComponent(origin)
+      + '&response_type=token+id_token'
+      + '&scope=openid%20email%20profile'
+      + '&nonce=' + Math.random().toString(36).substr(2);
+    var authUrl  = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+    /* Mo popup 480x600 */
+    var popup = window.open(authUrl, 'google-login',
+      'width=480,height=600,left=' + ((screen.width-480)/2) + ',top=' + ((screen.height-600)/2));
+    if (!popup) {
+      /* Popup bi block → redirect */
+      window.location.href = authUrl + '&redirect_uri=' + encodeURIComponent(origin);
+      return;
+    }
+    /* Poll popup de lay id_token */
+    var poll = setInterval(function() {
+      try {
+        if (!popup || popup.closed) { clearInterval(poll); return; }
+        var hash = popup.location.hash || popup.location.search;
+        if (!hash) return;
+        var m = hash.match(/[#&?]id_token=([^&]+)/);
+        if (m) {
+          clearInterval(poll);
+          popup.close();
+          _authGoogleCallback({ credential: decodeURIComponent(m[1]) });
+        }
+      } catch(e) { /* cross-origin, tiep tuc poll */ }
+    }, 300);
   }
 
   /* ============================================================
@@ -526,7 +598,9 @@
       '.sk-btn-outline{background:transparent!important;border:1px solid #334155!important;color:#94a3b8!important;}',
       '.sk-btn-outline:hover{background:#1e293b!important;color:#e2e8f0!important;}',
       '@keyframes sk-ti{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}',
-      '@media(max-width:640px){.sk-fg2{grid-template-columns:1fr;}.sk-auth-card{padding:24px 18px;}}'
+      '@media(max-width:640px){.sk-fg2{grid-template-columns:1fr;}.sk-auth-card{padding:24px 18px;}}',
+      '.sk-google-fallback-btn{width:100%;padding:11px 16px;background:#fff;border:1px solid #dadce0;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:600;color:#3c4043;transition:background .15s;}',
+      '.sk-google-fallback-btn:hover{background:#f8f9fa;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -587,6 +661,7 @@
   window._authLogin            = _authLogin;
   window._authLoginKey         = _authLoginKey;
   window._authGoogleCallback   = _authGoogleCallback;
+  window._authGoogleFallback   = _authGoogleFallback;
   window._authShowRegisterForm = _authShowRegisterForm;
   window._authSendRegister     = _authSendRegister;
   window._authTogglePass       = _authTogglePass;

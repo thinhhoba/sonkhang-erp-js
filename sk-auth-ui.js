@@ -506,38 +506,96 @@
   }
 
   function _authGoogleFallback() {
-    /* Fallback: mo cua so popup OAuth khi GSI bi COOP block */
+    /* Google OAuth Popup - localStorage bridge (tranh COOP block)
+     *
+     * COOP chặn: popup.closed, popup.location → KHÔNG dùng poll popup
+     * Giải pháp: popup redirect về CÙNG origin → trang chính đọc localStorage
+     *
+     * Luồng:
+     *   1. Xoá sk_oauth_token cũ khỏi localStorage
+     *   2. Mở popup → Google OAuth → redirect về origin với #id_token=xxx
+     *   3. Khi popup load lại trang → _checkOAuthHash() phát hiện id_token
+     *      → ghi vào localStorage('sk_oauth_token')
+     *   4. Parent poll localStorage mỗi 400ms (không bị COOP)
+     *   5. Lấy được token → gọi _authGoogleCallback()
+     */
     var gcid = _gcid();
     if (!gcid) { _authErrShow('sk-login-err', 'Chưa cấu hình Google Client ID'); return; }
-    var origin   = window.location.origin;
-    var params   = 'client_id=' + encodeURIComponent(gcid)
-      + '&redirect_uri=' + encodeURIComponent(origin)
-      + '&response_type=token+id_token'
+
+    /* Xoá token cũ */
+    try { localStorage.removeItem('sk_oauth_token'); } catch(e) {}
+
+    var origin  = window.location.origin;
+    var nonce   = Math.random().toString(36).substr(2) + Date.now();
+    var authUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+      + '?client_id='     + encodeURIComponent(gcid)
+      + '&redirect_uri='  + encodeURIComponent(origin)
+      + '&response_type=id_token'
       + '&scope=openid%20email%20profile'
-      + '&nonce=' + Math.random().toString(36).substr(2);
-    var authUrl  = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
-    /* Mo popup 480x600 */
-    var popup = window.open(authUrl, 'google-login',
-      'width=480,height=600,left=' + ((screen.width-480)/2) + ',top=' + ((screen.height-600)/2));
+      + '&nonce='         + nonce;
+
+    /* Mở popup */
+    var popup = window.open(authUrl, 'sk_google_oauth',
+      'width=480,height=600,'
+      + 'left=' + Math.round((screen.width  - 480) / 2) + ','
+      + 'top='  + Math.round((screen.height - 600) / 2));
+
     if (!popup) {
-      /* Popup bi block → redirect */
-      window.location.href = authUrl + '&redirect_uri=' + encodeURIComponent(origin);
+      /* Popup bị chặn → chuyển hướng trang chính */
+      try { localStorage.setItem('sk_oauth_redirect', '1'); } catch(e) {}
+      window.location.href = authUrl;
       return;
     }
-    /* Poll popup de lay id_token */
+
+    /* Hiện trạng thái đang chờ */
+    _authErrShow('sk-login-err', 'Đang chờ xác thực Google...');
+    var btn = document.getElementById('sk-login-err');
+    if (btn) btn.style.color = '#60a5fa';
+
+    /* Poll localStorage - KHÔNG bị COOP block */
+    var attempts = 0;
+    var maxAttempts = 300; /* 2 phut */
     var poll = setInterval(function() {
-      try {
-        if (!popup || popup.closed) { clearInterval(poll); return; }
-        var hash = popup.location.hash || popup.location.search;
-        if (!hash) return;
-        var m = hash.match(/[#&?]id_token=([^&]+)/);
-        if (m) {
-          clearInterval(poll);
-          popup.close();
-          _authGoogleCallback({ credential: decodeURIComponent(m[1]) });
-        }
-      } catch(e) { /* cross-origin, tiep tuc poll */ }
-    }, 300);
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(poll);
+        _authErrShow('sk-login-err', 'Hết thời gian chờ. Vui lòng thử lại.');
+        return;
+      }
+      var tok = '';
+      try { tok = localStorage.getItem('sk_oauth_token') || ''; } catch(e) {}
+      if (!tok) return;
+      /* Có token */
+      clearInterval(poll);
+      try { localStorage.removeItem('sk_oauth_token'); } catch(e) {}
+      _authGoogleCallback({ credential: tok });
+    }, 400);
+  }
+
+  /* _checkOAuthHash() - goi khi trang load, kiem tra co id_token trong URL hash khong
+   * Neu co → ghi vao localStorage → window.close() (neu la popup)
+   * Duoc goi tu DOMContentLoaded */
+  function _checkOAuthHash() {
+    try {
+      var hash = window.location.hash || '';
+      var m    = hash.match(/[#&]id_token=([^&]+)/);
+      if (!m) return false;
+      var token = decodeURIComponent(m[1]);
+      localStorage.setItem('sk_oauth_token', token);
+      /* Xoa hash khoi URL */
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      /* Neu la popup → tu dong dong */
+      if (window.opener) {
+        setTimeout(function() { window.close(); }, 300);
+        return true;
+      }
+      /* Neu la redirect trang chinh → xu ly luon */
+      try { localStorage.removeItem('sk_oauth_redirect'); } catch(e) {}
+      _authGoogleCallback({ credential: token });
+      return true;
+    } catch(e) { return false; }
   }
 
   /* ============================================================
@@ -625,6 +683,20 @@
   function _closeModal(id,e){if(e&&e.target&&e.target.id===id)_removeModal(id);}
 
   /* ============================================================
+   * S8.5 - OAUTH REDIRECT HANDLER
+   * Khi trang load, kiem tra URL hash co id_token khong
+   * (Google OAuth redirect ve sau khi user chon account)
+   * ============================================================ */
+  (function() {
+    /* Chay ngay khi IIFE execute (khong can doi DOMContentLoaded) */
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function() { _checkOAuthHash(); });
+    } else {
+      _checkOAuthHash();
+    }
+  })();
+
+  /* ============================================================
    * S9 - EXPOSE WINDOW
    * ============================================================ */
   _injectCss();
@@ -635,6 +707,7 @@
   window._authLogin            = _authLogin;
   window._authLoginKey         = _authLoginKey;
   window._authGoogleCallback   = _authGoogleCallback;
+  window._checkOAuthHash       = _checkOAuthHash;
   window._authGoogleFallback   = _authGoogleFallback;
   window._authShowRegisterForm = _authShowRegisterForm;
   window._authSendRegister     = _authSendRegister;

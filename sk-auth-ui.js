@@ -24,8 +24,8 @@
     };
   }
 
-  /* Google Client ID - match GOOGLE_CLIENT_ID in Auth.gs */
-  var _GCID = window.GOOGLE_CLIENT_ID || '';
+  /* Google Client ID - doc lazy moi lan dung, tranh race condition voi Theme XML inline script */
+  function _gcid() { return window.GOOGLE_CLIENT_ID || ''; }
 
   /* ============================================================
    * S1 - ENTRY POINTS
@@ -78,8 +78,8 @@
     h += '<div style="font-size:12.5px;color:#64748b;margin-top:4px;">v3.5 \u2014 \u0110\u0103ng nh\u1eadp h\u1ec7 th\u1ed1ng</div>';
     h += '</div>';
     /* Google GSI button — chi render khi da cau hinh GOOGLE_CLIENT_ID */
-    if (_GCID) {
-      h += '<div id="g_id_onload" data-client_id="' + _esc(_GCID) + '" data-callback="_authGoogleCallback" data-auto_prompt="false"></div>';
+    if (_gcid()) {
+      h += '<div id="g_id_onload" data-client_id="' + _esc(_gcid()) + '" data-callback="_authGoogleCallback" data-auto_prompt="false"></div>';
       h += '<div id="sk-google-btn" style="margin-bottom:18px;">';
       /* data-width PHAI la so px nguyen, KHONG dung % hoac auto */
       h += '<div class="g_id_signin" data-type="standard" data-theme="filled_black" data-size="large" data-width="360" data-text="signin_with" data-shape="rectangular" data-logo_alignment="left"></div>';
@@ -487,7 +487,7 @@
    * ============================================================ */
   function _loadGSI() {
     /* Chi load GSI script khi da cau hinh GOOGLE_CLIENT_ID */
-    if (!_GCID) return;
+    if (!_gcid()) return;
     if(document.getElementById('sk-gsi-script'))return;
     var s=document.createElement('script'); s.id='sk-gsi-script';
     s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;

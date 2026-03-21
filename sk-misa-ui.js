@@ -603,15 +603,31 @@ function _showMapForm(misaRow){
 // ════════════════════════════════════════════════════════════════
 // TAB 3: TẠO HÓA ĐƠN NHÁP
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// TAB TẠO HÓA ĐƠN NHÁP — v5.12
+// Luong: Chon don Sapo → Load chi tiet → Hien thi hoa don editor
+// Mode 1 (thu cong): Tu them/sua SP de can bang
+// Mode 2 (tu dong): He thong goi y, user xac nhan/sua roi tao
+// ════════════════════════════════════════════════════════════════
+
+// Draft editor state
+var DS = {
+  order    : null,   // order header
+  lines    : [],     // {misa_ma,misa_ten,dvt,sl,gia,vat,sapo_sku,ly_do_them,_editable}
+  mode     : 'manual',
+  loading  : false,
+};
+
 function _renderDraft(){
   var el=document.getElementById('misa-body');if(!el)return;
-  el.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">'
-    +'<input id="dr-q" type="text" placeholder="Ma don Sapo, ten khach..." '
-      +'style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;">'
-    +'<button id="dr-search" style="'+bg('accent')+'border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim don</button>'
+  DS.order=null; DS.lines=[];
+  el.innerHTML=
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">'
+      +'<input id="dr-q" type="text" placeholder="Tim ma don, ten khach hang..." '
+        +'style="flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;">'
+      +'<button id="dr-search" style="'+bg('accent')+'border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim don</button>'
     +'</div>'
     +'<div id="dr-order-list"></div>';
-
   document.getElementById('dr-search').addEventListener('click',_loadSapoOrders);
   document.getElementById('dr-q').addEventListener('keydown',function(e){if(e.keyCode===13)_loadSapoOrders();});
   _loadSapoOrders();
@@ -619,306 +635,701 @@ function _renderDraft(){
 
 function _loadSapoOrders(){
   var el=document.getElementById('dr-order-list');if(!el)return;
-  el.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);">Dang tai don hang Sapo...</div>';
-  var apiF=_api();if(!apiF)return;
+  el.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);">Dang tai don hang...</div>';
   var q=(document.getElementById('dr-q')||{}).value||'';
-  apiF('sales_get_orders',{q:q,limit:30,page:1},function(e,d){
+  _api()('sales_get_orders',{q:q,limit:30,page:1},function(e,d){
     if(e||!d||!d.ok){el.innerHTML='<div style="color:var(--red);padding:16px;">Loi tai don hang</div>';return;}
-    var orders=d.data||d.orders||[];
-    if(!orders.length){el.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);">Khong co don hang. Dong bo Sapo truoc.</div>';return;}
-
+    var orders=d.data||[];
+    if(!orders.length){
+      el.innerHTML='<div style="text-align:center;padding:40px;">'
+        +'<div style="font-size:28px;margin-bottom:10px;">&#x1F4CB;</div>'
+        +'<div style="font-size:13px;color:var(--text2);font-weight:700;">Chua co don hang</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:6px;">Dong bo don hang tu Sapo truoc khi tao HD</div>'
+      +'</div>';
+      return;
+    }
     var tbl='<div style="border-radius:12px;border:1px solid var(--border);overflow:auto;">'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:660px;">'
       +'<thead><tr style="background:var(--bg3);">'
         +'<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Ma don</th>'
         +'<th style="padding:9px 12px;text-align:left;">Khach hang</th>'
         +'<th style="padding:9px 12px;text-align:center;">Ngay</th>'
         +'<th style="padding:9px 12px;text-align:right;">Tong tien</th>'
-        +'<th style="padding:9px 12px;text-align:center;">Trang thai</th>'
+        +'<th style="padding:9px 12px;text-align:center;">TT</th>'
         +'<th style="padding:9px 12px;"></th>'
-      +'</tr></thead><tbody>';
-
-    orders.forEach(function(o,oi){
-      var ev=oi%2===0?'var(--bg2)':'var(--bg3)';
-      tbl+='<tr style="border-top:1px solid var(--border);background:'+ev+';">'
-        +'<td style="padding:8px 12px;font-weight:700;color:'+C.cyan[2]+';">'+_esc(o.ma_don||o.code||o.id||'')+'</td>'
-        +'<td style="padding:8px 12px;">'+_esc(o.khach_ten||o.customer||'')+'</td>'
-        +'<td style="padding:8px 12px;text-align:center;color:var(--text3);">'+_esc((o.ngay||o.created_at||'').split('T')[0])+'</td>'
-        +'<td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--green);">'+_fmt(o.tong_tt||o.total||0)+'d</td>'
-        +'<td style="padding:8px 12px;text-align:center;">'+_badge(o.trang_thai||'moi','accent')+'</td>'
-        +'<td style="padding:8px 12px;" id="dr-act-'+oi+'"></td>'
-        +'</tr>';
-    });
-    tbl+='</tbody></table></div>';
+      +'</tr></thead><tbody>'
+      +orders.map(function(o,oi){
+        var ev=oi%2===0?'var(--bg2)':'var(--bg3)';
+        return '<tr style="border-top:1px solid var(--border);background:'+ev+';">'
+          +'<td style="padding:8px 12px;font-weight:700;color:'+C.cyan[2]+';">'+_esc(o.ma_don||o.id||'')+'</td>'
+          +'<td style="padding:8px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(o.khach_ten||'')+'</td>'
+          +'<td style="padding:8px 12px;text-align:center;color:var(--text3);font-size:11px;">'+_esc((o.ngay||'').split('T')[0])+'</td>'
+          +'<td style="padding:8px 12px;text-align:right;font-weight:800;color:var(--green);">'+_fmt(o.tong_tt||0)+'d</td>'
+          +'<td style="padding:8px 12px;text-align:center;">'+_badge(o.trang_thai||'moi','accent')+'</td>'
+          +'<td style="padding:8px 12px;" id="dr-act-'+oi+'"></td>'
+          +'</tr>';
+      }).join('')
+      +'</tbody></table></div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right;">'+d.total+' don hang</div>';
     el.innerHTML=tbl;
-
     orders.forEach(function(o,oi){
       var td=document.getElementById('dr-act-'+oi);if(!td)return;
       var btn=document.createElement('button');
       btn.innerHTML='&#x1F4DD; Tao HD';
-      btn.style.cssText=bg('green')+'border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;';
+      btn.style.cssText=bg('green')+'border-radius:6px;padding:5px 11px;font-size:11px;font-weight:700;cursor:pointer;';
       btn.addEventListener('click',function(e){
         e.stopPropagation();
-        _showCreateDraftModal(o);
+        btn.disabled=true; btn.textContent='Dang tai...';
+        _loadOrderAndOpenEditor(o, function(){ btn.disabled=false; btn.textContent='Tao HD'; });
       });
       td.appendChild(btn);
     });
   });
 }
 
-function _showCreateDraftModal(order){
-  var maDon = String(order.ma_don||order.code||order.id||'');
-  var tongDon = Number(order.tong_tt||order.total||0);
-  var items = order.items||order.line_items||[];
-
-  var h='<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">'
-    +'<div>'
-      +'<div style="font-size:15px;font-weight:900;">Tao HD nhap tu don Sapo</div>'
-      +'<div style="font-size:11px;color:var(--text2);margin-top:2px;">Don: <strong>'+_esc(maDon)+'</strong> | KH: <strong>'+_esc(order.khach_ten||'')+'</strong> | Tong: <strong style="color:var(--green);">'+_fmt(tongDon)+'d</strong></div>'
-    +'</div>'
-    +'<button id="cd-x" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;">&#x00D7;</button>'
-    +'</div>'
-    // Chọn chế độ
-    +'<div style="padding:16px 20px;border-bottom:1px solid var(--border);">'
-      +'<div style="font-size:12px;font-weight:800;color:var(--text2);margin-bottom:10px;">Chon che do tao hoa don:</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'
-        // Mode 1
-        +'<label id="mode-simple-label" style="cursor:pointer;background:rgba(0,214,143,.08);border:2px solid var(--green);border-radius:12px;padding:14px;display:block;">'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-            +'<input type="radio" name="hd-mode" id="mode-simple" value="simple" checked> '
-            +'<span style="font-size:13px;font-weight:900;color:var(--green);">Che do 1 — Don gian</span>'
-          +'</div>'
-          +'<div style="font-size:11px;color:var(--text2);line-height:1.5;">Chi lay SP Sapo co mapping Misa va con ton kho. Khong can bang tong gia tri don hang.</div>'
-        +'</label>'
-        // Mode 2
-        +'<label id="mode-balance-label" style="cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:14px;display:block;">'
-          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-            +'<input type="radio" name="hd-mode" id="mode-balance" value="balance"> '
-            +'<span style="font-size:13px;font-weight:900;color:'+C.purple[2]+';">Che do 2 — Can bang gia tri</span>'
-          +'</div>'
-          +'<div style="font-size:11px;color:var(--text2);line-height:1.5;">Lay SP co mapping + goi y them SP Misa thay the SP Sapo khong co Misa, dieu chinh gia &#xB1;3% lam tron tram dong de xap xi tong don Sapo.</div>'
-        +'</label>'
-      +'</div>'
-    +'</div>'
-    // Thông tin khách
-    +'<div style="padding:12px 20px;background:rgba(0,182,255,.05);border-bottom:1px solid var(--border);">'      +'<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:'+C.cyan[2]+';margin-bottom:10px;">Thong tin khach hang (tu Sapo)</div>'      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'        +'<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px;">Ten khach hang</label>'          +'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text2);">'+_esc(order.khach_ten||'—')+'</div></div>'        +'<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px;">Ma so thue '          +(order.mst?'<span style=\"margin-left:6px;font-size:9px;background:'+C.cyan[0]+';border:1px solid '+C.cyan[1]+';color:'+C.cyan[2]+';border-radius:4px;padding:1px 6px;\">Tu Sapo</span>':'<span style=\"margin-left:6px;font-size:9px;background:'+C.yellow[0]+';border:1px solid '+C.yellow[1]+';color:'+C.yellow[2]+';border-radius:4px;padding:1px 6px;\">Chua co</span>')          +'</label>'          +'<input id="cd-mst" type="text" value="'+_esc(order.mst||'')+'" placeholder="Nhap MST neu can"'            +' style="width:100%;background:var(--bg3);border:1px solid '+(order.mst?C.cyan[1]:'var(--border2)')+';border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;box-sizing:border-box;">'        +'</div>'        +'<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px;">Email</label>'          +'<input id="cd-email" type="text" value="'+_esc(order.email||'')+'" placeholder="email@..." style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;box-sizing:border-box;">'        +'</div>'        +'<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px;">Ky hieu HD Misa</label>'          +'<input id="cd-kyhieu" type="text" value="AA/24E" placeholder="VD: AA/24E" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;box-sizing:border-box;">'        +'</div>'        +'<div style="grid-column:1/-1;"><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:5px;">Dia chi '          +((order.dia_chi_gh||order.address)?'<span style=\"margin-left:6px;font-size:9px;background:'+C.cyan[0]+';border:1px solid '+C.cyan[1]+';color:'+C.cyan[2]+';border-radius:4px;padding:1px 6px;\">Tu don Sapo</span>':'')          +'</label>'          +'<input id="cd-dc" type="text" value="'+_esc(order.dia_chi_gh||order.address||'')+'" placeholder="Dia chi giao hang / xuat hoa don"'            +' style="width:100%;background:var(--bg3);border:1px solid '+((order.dia_chi_gh||order.address)?C.cyan[1]:'var(--border2)')+';border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;box-sizing:border-box;">'        +'</div>'      +'</div>'
-      +_inp('cd-kyhieu','Ky hieu HD Misa','text','AA/24E','VD: AA/24E')
-      +'<div style="grid-column:1/-1;">'+_inp('cd-dc','Dia chi giao hang','text',order.dia_chi_gh||order.address||'','')+'</div>'
-    +'</div>'
-    +'<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;">'
-      +'<button id="cd-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
-      +'<button id="cd-create" style="'+bg('green')+'border-radius:8px;padding:8px 18px;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;">Kiem tra &amp; Tao HD nhap</button>'
-    +'</div>';
-
-  _modal(h,'720px');
-  document.getElementById('cd-x').addEventListener('click',_cm);
-  document.getElementById('cd-cancel').addEventListener('click',_cm);
-
-  // Mode toggle styling
-  var radios=document.querySelectorAll('[name="hd-mode"]');
-  radios.forEach(function(r2){
-    r2.addEventListener('change',function(){
-      document.getElementById('mode-simple-label').style.cssText='cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:14px;display:block;';
-      document.getElementById('mode-balance-label').style.cssText='cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:14px;display:block;';
-      var activeLabel=document.getElementById('mode-'+this.value+'-label');
-      var borderC=this.value==='balance'?C.purple[1]:'rgba(0,214,143,.5)';
-      var bgC=this.value==='balance'?'rgba(167,139,250,.08)':'rgba(0,214,143,.08)';
-      if(activeLabel){ activeLabel.style.background=bgC; activeLabel.style.border='2px solid '+borderC; }
-    });
-  });
-
-  document.getElementById('cd-create').addEventListener('click',function(){
-    var mode=document.querySelector('[name="hd-mode"]:checked').value;
-    var btn=this;btn.disabled=true;btn.textContent='Dang kiem tra...';
-    _api()('misa_create_draft_v2',{
-      ma_don:maDon, mode:mode,
-      items:items.map(function(it){return{sku:String(it.sku||it.sapo_sku||it.variant_id||''),ten:String(it.ten||it.name||it.title||''),so_luong:Number(it.so_luong||it.quantity||1),don_gia:Number(it.don_gia||it.price||0)};}),
-      tong_don:tongDon,
-      khach_ten:String(order.khach_ten||''),
-      mst:(document.getElementById('cd-mst')||{}).value||'',
-      email:(document.getElementById('cd-email')||{}).value||'',
-      so_hd_seri:(document.getElementById('cd-kyhieu')||{}).value||'AA/24E',
-      dia_chi:(document.getElementById('cd-dc')||{}).value||'',
-      nguoi_tao:'admin'
-    },function(e2,d2){
-      btn.disabled=false;btn.textContent='Kiem tra & Tao HD nhap';
-      if(!e2&&d2&&d2.ok){
-        _cm();
-        _showDraftResult(d2,mode,maDon);
-      } else _toast((d2&&d2.error)||'Loi','error');
-    });
+// Load chi tiet don (co items) roi mo editor
+function _loadOrderAndOpenEditor(orderHeader, onError){
+  var id = String(orderHeader.id||orderHeader.ma_don||'');
+  _api()('sales_get_order_detail',{id:id},function(e,d){
+    if(e||!d||!d.ok){
+      _toast('Loi tai chi tiet don: '+((d&&d.error)||''),'error');
+      if(onError) onError();
+      return;
+    }
+    var fullOrder = d.order||{};
+    fullOrder.items = d.items||[];
+    // Merge fields tu header (mst, email, dia_chi_gh da duoc join CRM)
+    fullOrder.mst        = fullOrder.mst        || orderHeader.mst        || '';
+    fullOrder.email      = fullOrder.email      || orderHeader.email      || '';
+    fullOrder.dien_thoai = fullOrder.dien_thoai || orderHeader.dien_thoai || '';
+    fullOrder.dia_chi_gh = fullOrder.dia_chi_gh || orderHeader.dia_chi_gh || '';
+    _openInvoiceEditor(fullOrder);
   });
 }
 
-function _showDraftResult(result,mode,maDon){
-  var included=result.included||[], skipped=result.skipped||[], suggestions=result.suggestions||[];
-  var tongIncl=result.tong_included||0, tongDon=result.tong_don_sapo||0, gap=result.gap||0;
+// ════════════════════════════════════════════════════════════════
+// INVOICE EDITOR — Giao dien hoa don
+// ════════════════════════════════════════════════════════════════
+function _openInvoiceEditor(order){
+  DS.order = order;
+  DS.mode  = 'manual';
 
-  var incHtml='<div style="margin-bottom:12px;">'
-    +'<div style="font-size:12px;font-weight:900;color:var(--green);margin-bottom:6px;">&#x2705; SP da dua vao HD ('+included.length+')</div>'
-    +'<div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;">'
-    +'<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:var(--bg3);">'
-    +'<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--text3);">Ma Misa</th>'
-    +'<th style="padding:6px 10px;text-align:left;">Ten hang</th>'
-    +'<th style="padding:6px 10px;text-align:center;">DVT</th>'
-    +'<th style="padding:6px 10px;text-align:right;">SL</th>'
-    +'<th style="padding:6px 10px;text-align:right;">Don gia</th>'
-    +'<th style="padding:6px 10px;text-align:right;">Tong</th>'
+  var el = document.getElementById('misa-body');if(!el)return;
+  var maDon   = String(order.ma_don||order.id||'');
+  var tongDon = Number(order.tong_tt||order.tong_goc||0);
+
+  el.innerHTML =
+    // ── Back button + tiêu đề ─────────────────────────────────
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">'
+      +'<button id="inv-back" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;">&#x2190; Danh sach don</button>'
+      +'<div>'
+        +'<div style="font-size:16px;font-weight:900;">Tao hoa don nhap Misa</div>'
+        +'<div style="font-size:11px;color:var(--text3);">Don Sapo: <strong style="color:'+C.cyan[2]+';">'+_esc(maDon)+'</strong>'
+          +' | KH: <strong>'+_esc(order.khach_ten||'')+'</strong>'
+          +' | Gia tri: <strong style="color:var(--green);">'+_fmt(tongDon)+'d</strong>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+
+    // ── Mode selector ─────────────────────────────────────────
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">'
+      +'<label id="inv-mode-manual-label" style="cursor:pointer;background:rgba(0,214,143,.08);border:2px solid rgba(0,214,143,.5);border-radius:12px;padding:12px 14px;display:block;">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+          +'<input type="radio" name="inv-mode" value="manual" checked style="width:14px;height:14px;">'
+          +'<span style="font-size:13px;font-weight:900;color:var(--green);">Che do 1 — Thu cong</span>'
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--text3);padding-left:22px;">ERP dien san SP Sapo co mapping. Ban tu them, xoa, sua gia de can bang.</div>'
+      +'</label>'
+      +'<label id="inv-mode-auto-label" style="cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:12px 14px;display:block;">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">'
+          +'<input type="radio" name="inv-mode" value="auto" style="width:14px;height:14px;">'
+          +'<span style="font-size:13px;font-weight:900;color:'+C.purple[2]+';">Che do 2 — Tu dong</span>'
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--text3);padding-left:22px;">ERP tu goi y SP thay the va dieu chinh gia ±3%, ban xac nhan hoac sua roi tao.</div>'
+      +'</label>'
+    +'</div>'
+
+    // ── Invoice form ──────────────────────────────────────────
+    +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden;">'
+
+      // Header hoa don
+      +'<div style="background:var(--bg3);padding:14px 18px;border-bottom:1px solid var(--border);">'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">'
+          +'<div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:4px;">Nguoi mua hang</label>'
+            +'<div style="font-size:12px;font-weight:700;">'+_esc(order.khach_ten||'')+'</div>'
+          +'</div>'
+          +'<div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:4px;">MST '+(order.mst?'<span style="color:var(--cyan);font-size:9px;">✓ Tu Sapo</span>':'<span style="color:var(--yellow);font-size:9px;">Chua co</span>')+'</label>'
+            +'<input id="inv-mst" value="'+_esc(order.mst||'')+'" placeholder="Nhap MST..." type="text"'
+              +' style="width:100%;background:var(--bg2);border:1px solid '+(order.mst?C.cyan[1]:'var(--border2)')+';border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;box-sizing:border-box;">'
+          +'</div>'
+          +'<div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:4px;">Email</label>'
+            +'<input id="inv-email" value="'+_esc(order.email||'')+'" placeholder="email..." type="text"'
+              +' style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;box-sizing:border-box;">'
+          +'</div>'
+          +'<div><label style="font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:4px;">Ky hieu HD</label>'
+            +'<input id="inv-kyhieu" value="AA/24E" type="text"'
+              +' style="width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;box-sizing:border-box;">'
+          +'</div>'
+        +'</div>'
+        +'<div style="margin-top:10px;">'
+          +'<label style="font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:4px;">Dia chi '+(order.dia_chi_gh?'<span style="color:var(--cyan);font-size:9px;">✓ Tu don Sapo</span>':'')+'</label>'
+          +'<input id="inv-dc" value="'+_esc(order.dia_chi_gh||'')+'" placeholder="Dia chi xuat hoa don..." type="text"'
+            +' style="width:100%;background:var(--bg2);border:1px solid '+(order.dia_chi_gh?C.cyan[1]:'var(--border2)')+';border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;box-sizing:border-box;">'
+        +'</div>'
+      +'</div>'
+
+      // ── Danh sách SP Sapo gốc (readonly, tham chiếu) ──────────
+      +'<div id="inv-sapo-items-wrap" style="padding:14px 18px;border-bottom:1px solid var(--border);background:rgba(251,191,36,.03);">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+          +'<div style="font-size:11px;font-weight:800;color:var(--yellow);">&#x1F6CD; San pham tren don Sapo (tham chieu)</div>'
+          +'<div style="font-size:11px;color:var(--text3);">Tong: <strong style="color:var(--green);">'+_fmt(tongDon)+'d</strong></div>'
+        +'</div>'
+        +'<div id="inv-sapo-items"></div>'
+      +'</div>'
+
+      // ── Bảng hóa đơn Misa (editable) ─────────────────────────
+      +'<div style="padding:14px 18px;">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+          +'<div style="font-size:11px;font-weight:800;color:var(--green);">&#x1F9FE; Hoa don Misa (co the chinh sua)</div>'
+          +'<div style="display:flex;gap:6px;" id="inv-line-actions">'
+            +'<button id="inv-add-line" style="'+bg('accent')+'border-radius:6px;padding:5px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">+ Them san pham</button>'
+          +'</div>'
+        +'</div>'
+        +'<div id="inv-lines-wrap"></div>'
+        // Tong ket
+        +'<div id="inv-totals" style="margin-top:12px;"></div>'
+      +'</div>'
+
+    +'</div>'
+
+    // ── Action bar ────────────────────────────────────────────
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:16px;">'
+      +'<div id="inv-balance-status" style="font-size:12px;color:var(--text3);"></div>'
+      +'<div style="display:flex;gap:8px;">'
+        +'<button id="inv-auto-btn" style="'+bg('purple')+'border-radius:10px;padding:10px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;display:none;">&#x1F916; Goi y tu dong</button>'
+        +'<button id="inv-confirm-btn" style="'+bg('green')+'border-radius:10px;padding:10px 18px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;">&#x2705; Tao hoa don nhap</button>'
+      +'</div>'
+    +'</div>';
+
+  // Events
+  document.getElementById('inv-back').addEventListener('click',function(){
+    DS.order=null; DS.lines=[];
+    _renderDraft();
+  });
+
+  // Mode toggle
+  document.querySelectorAll('[name="inv-mode"]').forEach(function(r){
+    r.addEventListener('change',function(){
+      DS.mode=this.value;
+      var ml=document.getElementById('inv-mode-manual-label');
+      var al=document.getElementById('inv-mode-auto-label');
+      if(ml) ml.style.cssText='cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:12px 14px;display:block;';
+      if(al) al.style.cssText='cursor:pointer;background:var(--bg3);border:2px solid var(--border2);border-radius:12px;padding:12px 14px;display:block;';
+      var active=document.getElementById('inv-mode-'+DS.mode+'-label');
+      if(active){
+        if(DS.mode==='manual'){
+          active.style.background='rgba(0,214,143,.08)'; active.style.border='2px solid rgba(0,214,143,.5)';
+        } else {
+          active.style.background='rgba(167,139,250,.08)'; active.style.border='2px solid '+C.purple[1];
+        }
+      }
+      var autoBtn=document.getElementById('inv-auto-btn');
+      if(autoBtn) autoBtn.style.display=DS.mode==='auto'?'':'none';
+      if(DS.mode==='auto') _runAutoSuggest();
+    });
+  });
+
+  document.getElementById('inv-add-line').addEventListener('click',_showAddProductModal);
+  document.getElementById('inv-auto-btn').addEventListener('click',_runAutoSuggest);
+  document.getElementById('inv-confirm-btn').addEventListener('click',_confirmCreateDraft);
+
+  // Init: render Sapo items + load mapping
+  _renderSapoItems(order.items||[]);
+  _initDraftLines(order.items||[]);
+}
+
+// ── Render danh sách SP Sapo gốc (tham chiếu) ────────────────────
+function _renderSapoItems(items){
+  var el=document.getElementById('inv-sapo-items');if(!el)return;
+  if(!items.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--text3);font-style:italic;">Don hang khong co san pham chi tiet. Kiem tra lai dong bo Sapo.</div>';
+    return;
+  }
+  el.innerHTML='<div style="border-radius:8px;border:1px solid rgba(251,191,36,.15);overflow:auto;">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    +'<thead><tr style="background:rgba(251,191,36,.06);">'
+      +'<th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--yellow);">SP Sapo (SKU)</th>'
+      +'<th style="padding:6px 10px;text-align:left;color:var(--yellow);">Ten san pham</th>'
+      +'<th style="padding:6px 10px;text-align:center;color:var(--yellow);">DVT</th>'
+      +'<th style="padding:6px 10px;text-align:right;color:var(--yellow);">SL</th>'
+      +'<th style="padding:6px 10px;text-align:right;color:var(--yellow);">Don gia</th>'
+      +'<th style="padding:6px 10px;text-align:right;color:var(--yellow);">Thanh tien</th>'
     +'</tr></thead><tbody>'
-    +included.map(function(r){
-      return '<tr style="border-top:1px solid var(--border);">'
-        +'<td style="padding:5px 10px;font-family:monospace;font-size:10px;color:var(--green);">'+_esc(r.misa_ma)+'</td>'
-        +'<td style="padding:5px 10px;">'+_esc(r.misa_ten||'')+'</td>'
-        +'<td style="padding:5px 10px;text-align:center;color:var(--text3);">'+_esc(r.dvt||'')+'</td>'
-        +'<td style="padding:5px 10px;text-align:right;">'+r.so_luong+'</td>'
-        +'<td style="padding:5px 10px;text-align:right;">'+_fmt(r.don_gia)+'</td>'
-        +'<td style="padding:5px 10px;text-align:right;font-weight:700;">'+_fmt(r.thanh_tien||r.so_luong*r.don_gia)+'</td>'
+    +items.map(function(it,i){
+      var sku=String(it.sp_id||it.sku||'');
+      var tt = Number(it.thanh_tien||it.sl*it.don_gia||0);
+      return '<tr style="border-top:1px solid rgba(251,191,36,.08);">'
+        +'<td style="padding:5px 10px;font-family:monospace;font-size:10px;color:'+C.yellow[2]+';">'+_esc(sku)+'</td>'
+        +'<td style="padding:5px 10px;">'+_esc(it.ten_sp||it.ten||'')+'</td>'
+        +'<td style="padding:5px 10px;text-align:center;color:var(--text3);">'+_esc(it.don_vi||'')+'</td>'
+        +'<td style="padding:5px 10px;text-align:right;">'+_fmt(it.sl||it.so_luong||0)+'</td>'
+        +'<td style="padding:5px 10px;text-align:right;">'+_fmt(it.don_gia||0)+'</td>'
+        +'<td style="padding:5px 10px;text-align:right;font-weight:700;">'+_fmt(tt)+'</td>'
         +'</tr>';
     }).join('')
-    +'</tbody></table></div></div>';
+    +'</tbody></table></div>';
+}
 
-  var skipHtml='';
-  if(skipped.length){
-    skipHtml='<div style="margin-bottom:12px;">'
-      +'<div style="font-size:12px;font-weight:900;color:var(--yellow);margin-bottom:6px;">&#x26A0; SP Sapo khong co trong Misa / het ton ('+skipped.length+')</div>'
-      +'<div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:10px;">'
-      +skipped.map(function(r){return '<div style="font-size:11px;display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(251,191,36,.1);">'
-        +'<span style="color:var(--text2);">'+_esc(r.ten||r.sku||'')+'</span>'
-        +'<span style="color:var(--yellow);font-size:10px;">'+_esc(r.ly_do||'')+'</span>'
-        +'</div>';}).join('')
+// ── Init lines: load mapping cho từng SP Sapo ────────────────────
+function _initDraftLines(sapoItems){
+  var el=document.getElementById('inv-lines-wrap');if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px;">Dang kiem tra mapping...</div>';
+  if(!sapoItems.length){
+    DS.lines=[];
+    _renderLines();
+    return;
+  }
+  // Gửi items lên để check mapping
+  var itemsForCheck = sapoItems.map(function(it){
+    return {
+      sku      : String(it.sp_id||it.sku||''),
+      ten      : String(it.ten_sp||it.ten||''),
+      so_luong : Number(it.sl||it.so_luong||1),
+      don_gia  : Number(it.don_gia||0)
+    };
+  });
+  _api()('misa_preview_order',{
+    ma_don  : String(DS.order.ma_don||DS.order.id||''),
+    items   : itemsForCheck
+  },function(e,d){
+    if(e||!d){
+      DS.lines=[];
+      _renderLines();
+      return;
+    }
+    DS.lines=[];
+    var preview=d.preview||[];
+    preview.forEach(function(p){
+      if(p.mapped && p.can_include){
+        // Lay gia tu mapping hoac tu don Sapo
+        var gia = p.don_gia_mapping||p.don_gia||0;
+        DS.lines.push({
+          misa_ma  : p.misa_ma,
+          misa_ten : p.misa_ten||p.ten||'',
+          dvt      : p.misa_dvt||p.dvt||'cai',
+          sl       : p.so_luong||1,
+          gia      : gia,
+          vat      : p.vat||10,
+          sapo_sku : p.sku,
+          ton_kho  : p.ton_misa,
+          nguon    : 'sapo',
+          _editable: true
+        });
+      } else if(p.mapped && !p.can_include){
+        DS.lines.push({
+          misa_ma:'', misa_ten:'', dvt:'', sl:p.so_luong||1, gia:p.don_gia||0, vat:10,
+          sapo_sku:p.sku,
+          ly_do_bo : p.reason||'',
+          nguon    :'sapo_skipped',
+          _editable: false
+        });
+      }
+      // SP Sapo khong co mapping: khong them vao lines (chi hien o sapo items)
+    });
+    _renderLines();
+  });
+}
+
+// ── Render bảng hóa đơn Misa (editable) ──────────────────────────
+function _renderLines(){
+  var el=document.getElementById('inv-lines-wrap');if(!el)return;
+
+  var activeLines = DS.lines.filter(function(l){ return l.misa_ma; });
+  var skippedLines= DS.lines.filter(function(l){ return l.nguon==='sapo_skipped'; });
+
+  if(!activeLines.length && !skippedLines.length){
+    el.innerHTML='<div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:14px;text-align:center;font-size:12px;color:var(--yellow);">'
+      +'Chua co san pham nao. Nhan "+ Them san pham" de them thu cong, hoac chuyen sang Che do 2 de he thong goi y.'
+    +'</div>';
+    _updateTotals();
+    return;
+  }
+
+  var html='<div style="border-radius:10px;border:1px solid var(--border);overflow:auto;">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:860px;" id="inv-lines-table">'
+    +'<thead><tr style="background:var(--bg3);">'
+      +'<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--green);">Ma hang Misa</th>'
+      +'<th style="padding:8px 10px;text-align:left;color:var(--green);">Ten hang hoa / DV</th>'
+      +'<th style="padding:8px 10px;text-align:center;color:var(--green);">DVT</th>'
+      +'<th style="padding:8px 10px;text-align:center;">Ton kho</th>'
+      +'<th style="padding:8px 10px;text-align:right;width:75px;">So luong</th>'
+      +'<th style="padding:8px 10px;text-align:right;width:120px;">Don gia (chua thue)</th>'
+      +'<th style="padding:8px 10px;text-align:center;width:60px;">% VAT</th>'
+      +'<th style="padding:8px 10px;text-align:right;">Thanh tien</th>'
+      +'<th style="padding:8px 10px;text-align:right;">Tien thue</th>'
+      +'<th style="padding:8px 10px;width:36px;"></th>'
+    +'</tr></thead><tbody>';
+
+  activeLines.forEach(function(line,li){
+    var realIdx = DS.lines.indexOf(line);
+    var tt  = Math.round(line.sl * line.gia);
+    var thue= Math.round(tt * line.vat / 100);
+    var evenBg = li%2===0?'var(--bg2)':'var(--bg3)';
+    var nguonBadge = line.nguon==='auto'
+      ? '<span style="font-size:9px;'+bg('purple')+'border-radius:3px;padding:1px 5px;margin-left:4px;">Goi y</span>'
+      : line.nguon==='added'
+      ? '<span style="font-size:9px;'+bg('accent')+'border-radius:3px;padding:1px 5px;margin-left:4px;">Them</span>'
+      : '';
+    var tonC = line.ton_kho<0?'var(--text3)':line.ton_kho===0?'var(--red)':line.ton_kho<10?'var(--yellow)':'var(--green)';
+
+    html+='<tr style="border-top:1px solid var(--border);background:'+evenBg+';" id="line-row-'+realIdx+'">'
+      +'<td style="padding:7px 10px;font-family:monospace;font-size:10px;font-weight:700;color:var(--green);">'+_esc(line.misa_ma)+nguonBadge+'</td>'
+      +'<td style="padding:7px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(line.misa_ten)+'">'+_esc(line.misa_ten)+'</td>'
+      +'<td style="padding:7px 10px;text-align:center;color:var(--text3);">'+_esc(line.dvt||'')+'</td>'
+      +'<td style="padding:7px 10px;text-align:center;font-size:11px;font-weight:700;color:'+tonC+';">'+(line.ton_kho<0?'—':_fmt(line.ton_kho))+'</td>'
+      // SL input
+      +'<td style="padding:5px 8px;">'
+        +'<input class="line-sl" data-idx="'+realIdx+'" type="number" min="0.01" step="1" value="'+line.sl+'"'
+          +' style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 6px;font-size:11px;text-align:right;color:var(--text);font-family:inherit;">'
+      +'</td>'
+      // Giá input
+      +'<td style="padding:5px 8px;">'
+        +'<input class="line-gia" data-idx="'+realIdx+'" type="number" min="0" step="100" value="'+line.gia+'"'
+          +' style="width:100%;background:var(--bg3);border:1px solid '+(line.nguon==='auto'?C.purple[1]:'var(--border2)')+';border-radius:6px;padding:4px 6px;font-size:11px;text-align:right;color:var(--text);font-family:inherit;">'
+        // Hiện range cho auto lines
+        +(line.nguon==='auto'&&line.gia_goc?'<div style="font-size:9px;color:var(--text3);text-align:right;margin-top:1px;">'+_fmt(Math.floor(line.gia_goc*0.97/100)*100)+'–'+_fmt(Math.ceil(line.gia_goc*1.03/100)*100)+'</div>':'')
+      +'</td>'
+      +'<td style="padding:7px 10px;text-align:center;color:var(--yellow);font-weight:700;">'+line.vat+'%</td>'
+      +'<td style="padding:7px 10px;text-align:right;font-weight:700;" id="line-tt-'+realIdx+'">'+_fmt(tt)+'</td>'
+      +'<td style="padding:7px 10px;text-align:right;color:var(--text3);" id="line-thue-'+realIdx+'">'+_fmt(thue)+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;" id="line-del-'+realIdx+'"></td>'
+      +'</tr>';
+  });
+
+  html+='</tbody></table></div>';
+
+  // SP bị bỏ qua (không có mapping / hết tồn)
+  if(skippedLines.length){
+    html+='<div style="margin-top:10px;background:rgba(251,191,36,.04);border:1px solid rgba(251,191,36,.15);border-radius:8px;padding:10px 12px;">'
+      +'<div style="font-size:10px;font-weight:800;color:var(--yellow);margin-bottom:6px;">SP Sapo khong dua vao hoa don ('+skippedLines.length+'):</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+      +skippedLines.map(function(l){
+        return '<span style="font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 9px;color:var(--text3);">'
+          +_esc(l.sapo_sku)+': <span style="color:var(--yellow);">'+_esc(l.ly_do_bo||'Khong co mapping')+'</span></span>';
+      }).join('')
       +'</div></div>';
   }
 
-  var suggestHtml='';
-  var confirmedItems=[];
+  el.innerHTML=html;
 
-  if(mode==='balance'&&suggestions.length){
-    suggestHtml='<div id="suggest-section" style="margin-bottom:12px;">'
-      +'<div style="font-size:12px;font-weight:900;color:'+C.purple[2]+';margin-bottom:8px;">&#x1F4A1; Goi y SP bo sung de can bang gia tri don (gap: <strong>'+_fmt(gap)+'d</strong>)</div>'
-      +'<div style="font-size:10px;color:var(--text3);margin-bottom:8px;">Gia da dieu chinh &#xB1;3%, lam tron hang tram dong. Chon SP muon them vao HD, co the sua so luong va gia.</div>'
-      +'<div style="border-radius:10px;border:1px solid '+C.purple[1]+';overflow:auto;">'
-      +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px;">'
-      +'<thead><tr style="background:rgba(167,139,250,.08);">'
-      +'<th style="padding:6px 10px;width:36px;"></th>'
-      +'<th style="padding:6px 10px;text-align:left;font-size:10px;color:var(--text3);">Ma Misa</th>'
-      +'<th style="padding:6px 10px;text-align:left;">Ten hang</th>'
-      +'<th style="padding:6px 10px;text-align:center;">DVT</th>'
-      +'<th style="padding:6px 10px;text-align:right;">Ton</th>'
-      +'<th style="padding:6px 10px;text-align:right;">SL de xuat</th>'
-      +'<th style="padding:6px 10px;text-align:right;">Gia goc</th>'
-      +'<th style="padding:6px 10px;text-align:right;">Gia de xuat</th>'
-      +'<th style="padding:6px 10px;text-align:center;">% ±</th>'
-      +'<th style="padding:6px 10px;text-align:right;">Thanh tien</th>'
-      +'</tr></thead><tbody>'
-      +suggestions.map(function(s,si){
-        var pct=s.change_pct||0;
-        var pctC=pct>0?'var(--yellow)':pct<0?'var(--cyan)':'var(--text3)';
-        return '<tr style="border-top:1px solid var(--border);" id="sug-row-'+si+'">'
-          +'<td style="padding:5px 8px;text-align:center;"><input type="checkbox" class="sug-cb" data-si="'+si+'" checked></td>'
-          +'<td style="padding:5px 10px;font-family:monospace;font-size:10px;color:'+C.purple[2]+';">'+_esc(s.misa_ma)+'</td>'
-          +'<td style="padding:5px 10px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(s.misa_ten||'')+'">'+_esc(s.misa_ten||'')+'</td>'
-          +'<td style="padding:5px 10px;text-align:center;color:var(--text3);">'+_esc(s.dvt||'')+'</td>'
-          +'<td style="padding:5px 10px;text-align:right;color:var(--green);">'+_fmt(s.ton_kho>0?s.ton_kho:0)+'</td>'
-          +'<td style="padding:5px 10px;text-align:right;"><input type="number" class="sug-sl" data-si="'+si+'" value="'+s.so_luong+'" min="1" style="width:55px;background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:3px 5px;font-size:11px;text-align:right;color:var(--text);"></td>'
-          +'<td style="padding:5px 10px;text-align:right;color:var(--text3);">'+_fmt(s.don_gia_goc)+'</td>'
-          +'<td style="padding:5px 10px;text-align:right;"><input type="number" class="sug-gia" data-si="'+si+'" value="'+s.don_gia_de_xuat+'" step="100" style="width:90px;background:var(--bg3);border:1px solid rgba(251,191,36,.4);border-radius:4px;padding:3px 5px;font-size:11px;text-align:right;color:var(--text);"></td>'
-          +'<td style="padding:5px 10px;text-align:center;font-size:10px;font-weight:700;color:'+pctC+';">'+(pct>=0?'+':'')+pct+'%</td>'
-          +'<td style="padding:5px 10px;text-align:right;font-weight:700;" id="sug-tt-'+si+'">'+_fmt(s.thanh_tien)+'</td>'
-          +'</tr>';
-      }).join('')
-      +'</tbody></table></div>'
-      // Tổng gợi ý
-      +'<div id="sug-total" style="margin-top:8px;font-size:12px;color:var(--text3);">Tong bo sung goi y: <strong id="sug-total-val" style="color:'+C.purple[2]+';">'+_fmt(suggestions.reduce(function(a,s){return a+s.thanh_tien;},0))+'d</strong></div>'
-    +'</div>';
-  }
-
-  var totHtml='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;font-size:12px;">'
-    +'<div><span style="color:var(--text3);">Tong don Sapo: </span><strong style="color:var(--text);">'+_fmt(tongDon)+'d</strong></div>'
-    +'<div><span style="color:var(--text3);">Tong SP dua vao: </span><strong style="color:var(--green);">'+_fmt(tongIncl)+'d</strong></div>'
-    +(gap>0?'<div><span style="color:var(--text3);">Chenh lech: </span><strong style="color:var(--yellow);">'+_fmt(gap)+'d</strong></div>':'')
-    +'</div>'
-    +'</div>';
-
-  var footHtml='<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">'
-    +'<button id="dr-back" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">&#x2190; Quay lai</button>'
-    +(mode==='balance'&&suggestions.length
-      ?'<button id="dr-confirm-sug" style="'+bg('purple')+'border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x2795; Them SP goi y da chon</button>':'')
-    +'<button id="dr-goto-list" style="'+bg('green')+'border-radius:8px;padding:8px 16px;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;">Xem danh sach HD nhap &#x2192;</button>'
-    +'</div>';
-
-  _modal('<div style="padding:16px 20px;border-bottom:1px solid var(--border);">'
-    +'<div style="font-size:15px;font-weight:900;">Ket qua tao HD nhap</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-top:2px;">Ma HD: '+_esc(result.ma_nhap||'')+'  |  Don Sapo: '+_esc(maDon)+'</div>'
-    +'</div>'
-    +'<div style="padding:14px 20px;max-height:65vh;overflow-y:auto;">'
-      +totHtml+incHtml+skipHtml+suggestHtml
-    +'</div>'+footHtml, '820px');
-
-  document.getElementById('dr-back').addEventListener('click',_cm);
-  document.getElementById('dr-goto-list').addEventListener('click',function(){
-    _cm();
-    document.querySelector('[data-t="list"]').click();
+  // Wire up inputs
+  el.querySelectorAll('.line-sl,.line-gia').forEach(function(inp){
+    inp.addEventListener('input',function(){
+      var idx=Number(this.getAttribute('data-idx'));
+      var cls=this.classList.contains('line-sl')?'sl':'gia';
+      var line=DS.lines[idx]; if(!line)return;
+      if(cls==='sl') line.sl=parseFloat(this.value)||0;
+      else {
+        var newGia=parseFloat(this.value)||0;
+        // Validate ±3% neu la auto line
+        if(line.nguon==='auto'&&line.gia_goc){
+          var minG=Math.floor(line.gia_goc*0.97/100)*100;
+          var maxG=Math.ceil(line.gia_goc*1.03/100)*100;
+          this.style.borderColor=(newGia<minG||newGia>maxG)?'var(--red)':C.purple[1];
+        }
+        line.gia=newGia;
+      }
+      var tt2=Math.round(line.sl*line.gia);
+      var thue2=Math.round(tt2*line.vat/100);
+      var ttEl=document.getElementById('line-tt-'+idx);
+      var thueEl=document.getElementById('line-thue-'+idx);
+      if(ttEl) ttEl.textContent=_fmt(tt2);
+      if(thueEl) thueEl.textContent=_fmt(thue2);
+      _updateTotals();
+    });
   });
 
-  // Recalc suggestion totals when user edits
-  if(mode==='balance'&&suggestions.length){
-    function _recalcSugTotals(){
-      var total=0;
-      suggestions.forEach(function(s,si){
-        var slInp=document.querySelector('.sug-sl[data-si="'+si+'"]');
-        var giaInp=document.querySelector('.sug-gia[data-si="'+si+'"]');
-        var cb=document.querySelector('.sug-cb[data-si="'+si+'"]');
-        if(!slInp||!giaInp||!cb) return;
-        var sl=Number(slInp.value||0);
-        var gia=Number(giaInp.value||0);
-        // Validate ±3%
-        var maxG=Math.ceil(s.don_gia_goc*1.03/100)*100;
-        var minG=Math.floor(s.don_gia_goc*0.97/100)*100;
-        if(gia>maxG||gia<minG){giaInp.style.borderColor='var(--red)';}
-        else {giaInp.style.borderColor='rgba(251,191,36,.4)';}
-        var tt=sl*gia;
-        var ttEl=document.getElementById('sug-tt-'+si);
-        if(ttEl) ttEl.textContent=_fmt(tt)+'d';
-        if(cb.checked) total+=tt;
-      });
-      var tv=document.getElementById('sug-total-val');
-      if(tv) tv.textContent=_fmt(total)+'d';
-    }
-    document.querySelectorAll('.sug-sl,.sug-gia,.sug-cb').forEach(function(inp){
-      inp.addEventListener('input',_recalcSugTotals);
+  // Delete buttons
+  activeLines.forEach(function(line){
+    var realIdx=DS.lines.indexOf(line);
+    var td=document.getElementById('line-del-'+realIdx);if(!td)return;
+    var btn=document.createElement('button');
+    btn.innerHTML='&#x1F5D1;';
+    btn.style.cssText='background:'+C.red[0]+';border:1px solid '+C.red[1]+';color:'+C.red[2]+';border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;';
+    btn.addEventListener('click',function(){
+      DS.lines.splice(realIdx,1);
+      _renderLines();
+      _updateTotals();
     });
+    td.appendChild(btn);
+  });
 
-    document.getElementById('dr-confirm-sug').addEventListener('click',function(){
-      var toAdd=[];
-      suggestions.forEach(function(s,si){
-        var cb=document.querySelector('.sug-cb[data-si="'+si+'"]');
-        if(!cb||!cb.checked) return;
-        var sl=Number((document.querySelector('.sug-sl[data-si="'+si+'"]')||{}).value||s.so_luong);
-        var gia=Number((document.querySelector('.sug-gia[data-si="'+si+'"]')||{}).value||s.don_gia_de_xuat);
-        // Validate ±3%
-        var maxG=Math.ceil(s.don_gia_goc*1.03/100)*100;
-        var minG=Math.floor(s.don_gia_goc*0.97/100)*100;
-        if(gia>maxG||gia<minG){_toast('Gia SP "'+s.misa_ma+'" vuot bien do ±3% ('+_fmt(minG)+'–'+_fmt(maxG)+'d)','error');return;}
-        toAdd.push(Object.assign({},s,{so_luong:sl,don_gia:gia,tong_cong:sl*gia}));
-      });
-      if(!toAdd.length){_toast('Chua chon SP nao','error');return;}
-      var btn2=this;btn2.disabled=true;btn2.textContent='Dang luu...';
-      _api()('misa_confirm_suggestions',{ma_nhap:result.ma_nhap,items:toAdd},function(e3,d3){
-        btn2.disabled=false;btn2.textContent='Them SP goi y da chon';
-        if(!e3&&d3&&d3.ok){
-          _toast('Da them '+d3.added+' SP bo sung vao HD','ok');
-          btn2.style.display='none';
-          document.querySelectorAll('.sug-cb:checked').forEach(function(cb2){
-            var si=cb2.getAttribute('data-si');
-            var row=document.getElementById('sug-row-'+si);
-            if(row) row.style.background='rgba(0,214,143,.1)';
-          });
-        } else _toast((d3&&d3.error)||'Loi','error');
-      });
-    });
+  _updateTotals();
+}
+
+// ── Totals ───────────────────────────────────────────────────────
+function _updateTotals(){
+  var activeLines = DS.lines.filter(function(l){ return l.misa_ma; });
+  var tongChuaThue=0, tongThue=0;
+  activeLines.forEach(function(l){
+    tongChuaThue += Math.round(l.sl*l.gia);
+    tongThue     += Math.round(l.sl*l.gia*l.vat/100);
+  });
+  var tongTT = tongChuaThue + tongThue;
+  var tongDon = Number(DS.order?DS.order.tong_tt||DS.order.tong_goc||0:0);
+  var gap     = tongDon - tongChuaThue;
+  var gapAbs  = Math.abs(gap);
+  var gapPct  = tongDon>0?Math.round(gapAbs/tongDon*100):0;
+
+  var el=document.getElementById('inv-totals');
+  if(el){
+    el.innerHTML='<div style="display:flex;justify-content:flex-end;">'
+      +'<div style="min-width:280px;">'
+        +'<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border);">'
+          +'<span style="color:var(--text3);">Tong tien chua thue</span>'
+          +'<strong>'+_fmt(tongChuaThue)+'d</strong>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:12px;border-bottom:1px solid var(--border);">'
+          +'<span style="color:var(--text3);">Tien thue GTGT</span>'
+          +'<span>'+_fmt(tongThue)+'d</span>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:900;border-bottom:2px solid var(--border);">'
+          +'<span>Tong thanh toan</span>'
+          +'<span style="color:var(--green);">'+_fmt(tongTT)+'d</span>'
+        +'</div>'
+        +'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:11px;">'
+          +'<span style="color:var(--text3);">Gia tri don Sapo</span>'
+          +'<span>'+_fmt(tongDon)+'d</span>'
+        +'</div>'
+        +(tongDon>0?'<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:11px;">'
+          +'<span style="color:var(--text3);">Chenh lech (chua thue)</span>'
+          +'<span style="font-weight:700;color:'+(gapAbs<1000?'var(--green)':gapAbs/tongDon<0.05?'var(--yellow)':'var(--red)')+';">'
+            +(gap>0?'+':'')+_fmt(gap)+'d ('+gapPct+'%)'
+          +'</span>'
+        +'</div>':'')
+      +'</div>'
+    +'</div>';
+  }
+
+  var bStat=document.getElementById('inv-balance-status');
+  if(bStat && tongDon>0){
+    if(gapAbs<1000){
+      bStat.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; Da can bang voi don Sapo</span>';
+    } else if(gap>0){
+      bStat.innerHTML='<span style="color:var(--yellow);">Con thieu <strong>'+_fmt(gap)+'d</strong>. '
+        +(DS.mode==='manual'?'Them SP hoac tang gia.':'Nhan "Goi y tu dong" de he thong bo sung.')+'</span>';
+    } else {
+      bStat.innerHTML='<span style="color:var(--red);">Dang du <strong>'+_fmt(-gap)+'d</strong>. Giam gia hoac xoa SP.</span>';
+    }
   }
 }
+
+// ── Modal thêm sản phẩm Misa (thủ công) ─────────────────────────
+function _showAddProductModal(){
+  var h='<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">'
+    +'<div style="font-size:14px;font-weight:900;">+ Them san pham Misa</div>'
+    +'<button id="ap-x" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1;">&#x00D7;</button>'
+    +'</div>'
+    +'<div style="padding:14px 18px;">'
+      +'<div style="display:flex;gap:6px;margin-bottom:10px;">'
+        +'<input id="ap-q" type="text" placeholder="Tim ma hang Misa, ten hang..." '
+          +'style="flex:1;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);font-family:inherit;">'
+        +'<button id="ap-search" style="'+bg('accent')+'border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim</button>'
+      +'</div>'
+      +'<div id="ap-results" style="max-height:300px;overflow-y:auto;border-radius:8px;border:1px solid var(--border);"></div>'
+    +'</div>';
+  _modal(h,'660px');
+  document.getElementById('ap-x').addEventListener('click',_cm);
+  document.getElementById('ap-search').addEventListener('click',_searchMisaProducts);
+  document.getElementById('ap-q').addEventListener('keydown',function(e){if(e.keyCode===13)_searchMisaProducts();});
+  _searchMisaProducts();
+}
+
+function _searchMisaProducts(){
+  var el=document.getElementById('ap-results');if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:16px;font-size:11px;color:var(--text3);">Dang tim...</div>';
+  var q=(document.getElementById('ap-q')||{}).value||'';
+  _api()('misa_get_danh_muc_full',{q:q,limit:60,only_mapped:true},function(e,d){
+    if(e||!d||!d.ok){ el.innerHTML='<div style="color:var(--red);padding:8px;font-size:11px;">Loi</div>'; return; }
+    var rows=d.data||[];
+    if(!rows.length){ el.innerHTML='<div style="text-align:center;padding:16px;font-size:11px;color:var(--text3);">Khong co ket qua</div>'; return; }
+    el.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+      +'<thead><tr style="background:var(--bg3);">'
+        +'<th style="padding:7px 10px;text-align:left;font-size:10px;color:var(--text3);">Ma Misa</th>'
+        +'<th style="padding:7px 10px;text-align:left;">Ten hang</th>'
+        +'<th style="padding:7px 10px;text-align:center;">DVT</th>'
+        +'<th style="padding:7px 10px;text-align:right;">Ton kho</th>'
+        +'<th style="padding:7px 10px;text-align:right;">Don gia</th>'
+        +'<th style="padding:7px 10px;"></th>'
+      +'</tr></thead><tbody>'
+      +rows.map(function(r){
+        var tc=r.ton_kho<0?'var(--text3)':r.ton_kho===0?'var(--red)':r.ton_kho<10?'var(--yellow)':'var(--green)';
+        var canAdd=r.ton_kho!==0; // Cho phep them ca khi N/A (ton=-1)
+        return '<tr style="border-top:1px solid var(--border);">'
+          +'<td style="padding:6px 10px;font-family:monospace;font-size:10px;color:var(--green);font-weight:700;">'+_esc(r.misa_ma)+'</td>'
+          +'<td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+_esc(r.misa_ten||'')+'">'+_esc(r.misa_ten||'')+'</td>'
+          +'<td style="padding:6px 10px;text-align:center;color:var(--text3);">'+_esc(r.dvt||'')+'</td>'
+          +'<td style="padding:6px 10px;text-align:right;font-weight:700;color:'+tc+';">'+(r.ton_kho<0?'N/A':_fmt(r.ton_kho))+'</td>'
+          +'<td style="padding:6px 10px;text-align:right;">'+(r.don_gia>0?_fmt(r.don_gia)+'d':'—')+'</td>'
+          +'<td style="padding:6px 10px;"><button class="ap-add-btn" '
+            +'data-ma="'+_esc(r.misa_ma)+'" data-ten="'+_esc(r.misa_ten||'')+'" '
+            +'data-dvt="'+_esc(r.dvt||'cai')+'" data-gia="'+r.don_gia+'" '
+            +'data-vat="'+r.vat+'" data-ton="'+r.ton_kho+'" '
+            +(canAdd?'style="'+bg('green')+'border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;"'
+                    :'style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:3px 9px;font-size:11px;cursor:not-allowed;" disabled')
+            +'>'+_esc(canAdd?'+ Them':'Het hang')+'</button></td>'
+          +'</tr>';
+      }).join('')
+      +'</tbody></table>';
+
+    el.querySelectorAll('.ap-add-btn:not([disabled])').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        DS.lines.push({
+          misa_ma  : btn.getAttribute('data-ma'),
+          misa_ten : btn.getAttribute('data-ten'),
+          dvt      : btn.getAttribute('data-dvt'),
+          sl       : 1,
+          gia      : Number(btn.getAttribute('data-gia'))||0,
+          vat      : Number(btn.getAttribute('data-vat'))||10,
+          ton_kho  : Number(btn.getAttribute('data-ton')),
+          nguon    : 'added',
+          _editable: true
+        });
+        btn.textContent='✓ Da them';
+        btn.disabled=true;
+        btn.style.cssText=bg('green')+'border-radius:6px;padding:3px 9px;font-size:11px;cursor:default;opacity:.7;';
+        _renderLines();
+        _updateTotals();
+      });
+    });
+  });
+}
+
+// ── Auto-suggest (Chế độ 2) ───────────────────────────────────────
+function _runAutoSuggest(){
+  var tongDon=Number(DS.order?DS.order.tong_tt||DS.order.tong_goc||0:0);
+  var activeLines=DS.lines.filter(function(l){return l.misa_ma;});
+  var tongIncluded=activeLines.reduce(function(a,l){return a+Math.round(l.sl*l.gia);},0);
+  var gap=tongDon-tongIncluded;
+
+  if(Math.abs(gap)<1000){
+    _toast('Da can bang roi! Chenh lech < 1.000d','ok');
+    return;
+  }
+
+  var btn=document.getElementById('inv-auto-btn');
+  if(btn){btn.disabled=true;btn.textContent='Dang tinh...';}
+
+  // Lấy DS Sapo items
+  var sapoItems=(DS.order.items||[]).map(function(it){
+    return {sku:String(it.sp_id||it.sku||''),ten:String(it.ten_sp||it.ten||''),
+            so_luong:Number(it.sl||it.so_luong||1),don_gia:Number(it.don_gia||0)};
+  });
+
+  _api()('misa_create_draft_v2',{
+    ma_don    : String(DS.order.ma_don||DS.order.id||''),
+    mode      : 'balance',
+    items     : sapoItems,
+    tong_don  : tongDon,
+    dry_run   : true,   // Khong ghi vao sheet, chi tra suggestions
+    khach_ten : DS.order.khach_ten||'',
+  },function(e,d){
+    if(btn){btn.disabled=false;btn.textContent='&#x1F916; Goi y tu dong';}
+    if(e||!d||!d.ok){_toast((d&&d.error)||'Loi goi y','error');return;}
+    var sug=d.suggestions||[];
+    if(!sug.length){
+      _toast('Khong tim duoc SP phu hop de bo sung','error');
+      return;
+    }
+    // Xoa cac auto lines cu, them moi
+    DS.lines=DS.lines.filter(function(l){return l.nguon!=='auto';});
+    sug.forEach(function(s){
+      DS.lines.push({
+        misa_ma       : s.misa_ma,
+        misa_ten      : s.misa_ten||'',
+        dvt           : s.dvt||'cai',
+        sl            : s.so_luong||1,
+        gia           : s.don_gia_de_xuat||s.don_gia||0,
+        gia_goc       : s.don_gia_goc||s.don_gia||0,
+        vat           : s.vat||10,
+        ton_kho       : s.ton_kho,
+        nguon         : 'auto',
+        change_pct    : s.change_pct||0,
+        _editable     : true
+      });
+    });
+    _toast('Da goi y '+sug.length+' SP bo sung. Kiem tra va xac nhan.','ok');
+    _renderLines();
+    _updateTotals();
+  });
+}
+
+// ── Confirm tạo đơn ──────────────────────────────────────────────
+function _confirmCreateDraft(){
+  var activeLines=DS.lines.filter(function(l){return l.misa_ma;});
+  if(!activeLines.length){_toast('Chua co san pham nao trong hoa don','error');return;}
+
+  // Validate auto lines: gia phai trong ±3%
+  var invalidLines=activeLines.filter(function(l){
+    if(l.nguon!=='auto'||!l.gia_goc) return false;
+    var minG=Math.floor(l.gia_goc*0.97/100)*100;
+    var maxG=Math.ceil(l.gia_goc*1.03/100)*100;
+    return l.gia<minG||l.gia>maxG;
+  });
+  if(invalidLines.length){
+    _toast('Co '+invalidLines.length+' SP co gia vuot bien do ±3%. Vui long chinh lai.','error');
+    return;
+  }
+
+  var btn=document.getElementById('inv-confirm-btn');
+  if(btn){btn.disabled=true;btn.textContent='Dang tao...';}
+
+  var order=DS.order;
+  _api()('misa_create_draft_v2',{
+    ma_don    : String(order.ma_don||order.id||''),
+    mode      : 'direct',   // Mode moi: dung truc tiep lines tu client
+    items     : (order.items||[]).map(function(it){
+      return {sku:String(it.sp_id||it.sku||''),ten:String(it.ten_sp||it.ten||''),
+              so_luong:Number(it.sl||it.so_luong||1),don_gia:Number(it.don_gia||0)};
+    }),
+    direct_lines : activeLines.map(function(l){
+      return {misa_ma:l.misa_ma,misa_ten:l.misa_ten,dvt:l.dvt,
+              so_luong:l.sl,don_gia:l.gia,vat:l.vat};
+    }),
+    tong_don  : Number(order.tong_tt||order.tong_goc||0),
+    khach_ten : String(order.khach_ten||''),
+    mst       : (document.getElementById('inv-mst')||{}).value||'',
+    email     : (document.getElementById('inv-email')||{}).value||'',
+    so_hd_seri: (document.getElementById('inv-kyhieu')||{}).value||'AA/24E',
+    dia_chi   : (document.getElementById('inv-dc')||{}).value||'',
+    nguoi_tao : 'admin'
+  },function(e,d){
+    if(btn){btn.disabled=false;btn.textContent='Tao hoa don nhap';}
+    if(!e&&d&&d.ok){
+      _toast('&#x2705; '+d.msg,'ok');
+      // Show success
+      var el=document.getElementById('misa-body');
+      if(el){
+        el.innerHTML='<div style="text-align:center;padding:60px 20px;">'
+          +'<div style="font-size:52px;margin-bottom:14px;">&#x2705;</div>'
+          +'<div style="font-size:18px;font-weight:900;color:var(--green);margin-bottom:8px;">Tao hoa don thanh cong!</div>'
+          +'<div style="font-size:13px;color:var(--text2);margin-bottom:6px;">Ma HD: <strong style="font-family:monospace;">'+_esc(d.ma_nhap||'')+'</strong></div>'
+          +'<div style="font-size:12px;color:var(--text3);margin-bottom:20px;">'+_esc(d.msg||'')+'</div>'
+          +'<div style="display:flex;gap:10px;justify-content:center;">'
+            +'<button id="sc-new" style="'+bg('accent')+'border-radius:8px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tao HD khac</button>'
+            +'<button id="sc-list" style="'+bg('green')+'border-radius:8px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Xem danh sach HD &#x2192;</button>'
+          +'</div>'
+        +'</div>';
+        document.getElementById('sc-new').addEventListener('click',function(){DS.order=null;DS.lines=[];_renderDraft();});
+        document.getElementById('sc-list').addEventListener('click',function(){ document.querySelector('[data-t="list"]').click(); });
+      }
+    } else {
+      _toast((d&&d.error)||'Loi tao HD','error');
+    }
+  });
+}
+
+
 
 // ════════════════════════════════════════════════════════════════
 // TAB 4: DANH SÁCH HD NHÁP

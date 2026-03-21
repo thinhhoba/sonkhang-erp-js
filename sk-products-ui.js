@@ -162,11 +162,19 @@
     loadBangGia();
   };
 
-  // Cac alias giu lai de khong phai doi SK_LOADERS cu
-  window.loadChietKhau = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('discounts'); },200); };
-  window.loadKhachHang = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('customers'); },200); };
-  window.loadTinhGia   = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('calc'); },200); };
-  window.loadSalesCRM  = window.loadKhachHang;
+  // sk-products-ui.js KHONG override loadChietKhau/loadTinhGia/loadKhachHang
+  // Cac ham nay do sk-sales-price.js quan ly (IIFE chay sau, se override dung)
+  // Neu sk-sales-price.js chua load → fallback loadBangGia
+  if (typeof window.loadChietKhau !== 'function') {
+    window.loadChietKhau = function(){ loadBangGia(); };
+  }
+  if (typeof window.loadTinhGia !== 'function') {
+    window.loadTinhGia = function(){ loadBangGia(); };
+  }
+  if (typeof window.loadKhachHang !== 'function') {
+    window.loadKhachHang = function(){ typeof window.loadCRM==='function'?window.loadCRM():loadBangGia(); };
+  }
+  window.loadSalesCRM = window.loadCRM || window.loadKhachHang;
 
   function _loadKPI() {
     var apiF = _api(); if (!apiF) return;

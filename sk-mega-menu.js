@@ -21,7 +21,6 @@
         { id:'danh-muc',    icon:'&#x1F333;', label:'Danh muc',      desc:'Cay phan cap · drag-drop · filter',   done:true  },
         { id:'thuong-hieu', icon:'&#x1F3F7;', label:'Thuong hieu',   desc:'Brand · logo · quoc gia',             done:true  },
         { id:'thuoc-tinh',  icon:'&#x1F9E9;', label:'Thuoc tinh',    desc:'Mau · size · chat lieu · price tier', done:true  },
-        { id:'sapo-sync',   icon:'&#x1F504;', label:'Sapo Realtime', desc:'Auto sync · webhook · notification',  done:true  }
       ]
     },
     {
@@ -77,6 +76,7 @@
     {
       id: 'quan-tri', label: 'Quan tri', icon: '&#x2699;', color: '#a78bfa',
       items: [
+        { id:'sapo-sync',        icon:'&#x1F504;', label:'Sapo Sync',     desc:'Don hang · san pham · realtime',done:true   },
         { id:'admin-panel',      icon:'&#x1F511;', label:'Phan quyen',    desc:'Users · roles · RBAC',        admin:true  },
         { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',  desc:'Lien ket tai khoan · NV',     admin:true  },
         { id:'account-settings', icon:'&#x1F464;', label:'Cai dat TK',    desc:'Mat khau · thong tin ca nhan',admin:false },

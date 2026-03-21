@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.15] 22/03/2026 — Notification Bell: GAS polling, XSS guard, O(1) dedup
 // [v5.14] 21/03/2026 — DevLog System: realtime changelog + masterplan tracking
 // [v5.13.1] 21/03/2026 — Bugfix: restore buildMegaMenu, buildDropdown, _bindMenuEvents,
 //           _bindSearchEvents, openSearch/closeSearch, _renderSearchResults,
@@ -219,9 +220,11 @@
     _bindSearchEvents();
     _bindBellEvents();
     _updateBellBadge();
+    // [v5.15] Start GAS polling sau khi API sẵn sàng
+    _startNotifPoll();
   }
 
-  /* ================================================================
+  /* ===============================================================
    * 2. MENU EVENTS
    * ================================================================ */
   function _closeAllDropdowns(except) {
@@ -395,35 +398,334 @@
 
 
   // ── Notification bell data (local mock — sẽ được replace bằng GAS polling sau) ──
-  var _notifications = [
-    { id:1, type:'order',    text:'Don hang moi tu Sapo #SO0231',  time:'2 phut',  read:false },
-    { id:2, type:'leave',    text:'Nguyen Van A xin nghi phep 25/03', time:'15 phut', read:false },
-    { id:3, type:'vehicle',  text:'Xe 51G-12345 da hoan thanh chuyen', time:'1 gio',  read:true  },
-    { id:4, type:'payroll',  text:'Luong thang 3 da duoc duyet',   time:'2 gio',   read:true  },
-  ];
+  // ── Notification bell — GAS Realtime Polling v5.15 ────────────
+  // ── Notification Bell v5.15 — GAS Realtime Polling ────────────────
+  // [SECURITY] Không dùng localStorage — state in-memory only
+  // [O(1)]     _notifIdSet (Set) để dedup khi merge items mới
+  // [PERF]     Poll pause khi tab ẩn (visibilitychange API)
+  // [OWASP A03] Mọi server text qua _escHtml() trước khi render
+  // ──────────────────────────────────────────────────────────────────
 
-  /* ================================================================
-   * 4. NOTIFICATION BELL
-   * ================================================================ */
-  function buildBellPanel() {
-    var unread = _notifications.filter(function(n){ return !n.read; }).length;
-    var html = '<div class="bell-header">'
-      + '<span class="bell-title">Thong bao</span>'
-      + (unread ? '<span class="bell-unread">' + unread + ' moi</span>' : '')
-      + '</div><div class="bell-list">';
-    _notifications.forEach(function(n) {
-      var icons = { order:'&#x1F6D2;', leave:'&#x1F4C5;', vehicle:'&#x1F69B;', payroll:'&#x1F4B5;' };
-      html += '<div class="bell-item' + (n.read ? '' : ' unread') + '" data-id="' + n.id + '">'
-        + '<span class="bell-icon">' + (icons[n.type] || '&#x1F514;') + '</span>'
-        + '<div class="bell-body">'
-        + '<div class="bell-text">' + n.text + '</div>'
-        + '<div class="bell-time">' + n.time + ' truoc</div>'
-        + '</div>'
-        + (n.read ? '' : '<span class="bell-dot"></span>')
-        + '</div>';
+  // ── State ───────────────────────────────────────────────────────
+  var _notifCache   = [];          // Array<notif> — max 50 items
+  var _notifIdSet   = new Set();   // O(1) dedup guard
+  var _notifUnread  = 0;
+  var _notifTimer   = null;
+  var _notifSince   = null;        // ISO string — lọc chỉ lấy mới
+  var _notifLoading = false;
+  var _notifInited  = false;
+  var NOTIF_POLL_MS = 30000;       // 30 giây
+  var NOTIF_MAX     = 50;          // giới hạn cache
+
+  // ── Type config ─────────────────────────────────────────────────
+  var NOTIF_CFG = {
+    order_new       : { icon:'&#x1F6D2;', label:'Đơn hàng',   color:'var(--accent2)' },
+    order_paid      : { icon:'&#x1F4B0;', label:'Thanh toán',  color:'var(--green)'   },
+    order_cancel    : { icon:'&#x274C;',  label:'Hủy đơn',    color:'var(--red)'     },
+    leave_request   : { icon:'&#x1F4C5;', label:'Xin nghỉ',   color:'var(--yellow)'  },
+    leave_approved  : { icon:'&#x2705;',  label:'Duyệt nghỉ', color:'var(--green)'   },
+    expiry_alert    : { icon:'&#x23F0;',  label:'Hết hạn',    color:'var(--yellow)'  },
+    stock_low       : { icon:'&#x1F4E6;', label:'Tồn kho',    color:'var(--red)'     },
+    misa_hd         : { icon:'&#x1F4CB;', label:'Hóa đơn',    color:'var(--cyan)'    },
+    workflow_pending: { icon:'&#x23F3;',  label:'Phê duyệt',  color:'var(--yellow)'  },
+    kpi_alert       : { icon:'&#x1F4CA;', label:'KPI',        color:'var(--accent2)' },
+    debt_due        : { icon:'&#x1F4B3;', label:'Công nợ',    color:'var(--red)'     },
+    contract_expire : { icon:'&#x1F4DC;', label:'Hợp đồng',   color:'var(--yellow)'  },
+    system          : { icon:'&#x2699;',  label:'Hệ thống',   color:'var(--text3)'   },
+    info            : { icon:'&#x2139;',  label:'Thông tin',  color:'var(--accent2)' },
+  };
+
+  // ── Helpers ─────────────────────────────────────────────────────
+  function _escHtml(s) {
+    // [OWASP A03] Sanitize server text trước khi render vào innerHTML
+    return String(s||'')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function _notifTimeAgo(iso) {
+    if (!iso) return '';
+    var diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60)   return diff + 'g trước';
+    if (diff < 3600) return Math.floor(diff/60) + ' phút trước';
+    if (diff < 86400)return Math.floor(diff/3600) + ' giờ trước';
+    return Math.floor(diff/86400) + ' ngày trước';
+  }
+
+  function _notifFmt(hhmm) {
+    var d = new Date();
+    return (d.getHours()<10?'0'+d.getHours():d.getHours())+':'
+          +(d.getMinutes()<10?'0'+d.getMinutes():d.getMinutes())+':'
+          +(d.getSeconds()<10?'0'+d.getSeconds():d.getSeconds());
+  }
+
+  // ── Core: fetch từ GAS ─────────────────────────────────────────
+  function _notifFetch(force) {
+    if (_notifLoading) return;
+    var api = typeof window.api === 'function' ? window.api : null;
+    if (!api) return;
+
+    _notifLoading = true;
+    var params = { limit: 30, unread_only: false };
+    if (_notifSince && !force) params.since = _notifSince;
+
+    api('notif_get', params, function(err, d) {
+      _notifLoading = false;
+      if (err || !d || !d.ok) return;
+
+      var items = d.data || [];
+      var newCount = 0;
+
+      // [O(1)] Merge — dùng Set để dedup
+      items.forEach(function(item) {
+        if (_notifIdSet.has(item.id)) return;
+        _notifIdSet.add(item.id);
+        _notifCache.unshift(item);   // mới nhất lên đầu
+        if (item.status === 'unread') newCount++;
+      });
+
+      // Cắt cache nếu vượt NOTIF_MAX
+      if (_notifCache.length > NOTIF_MAX) {
+        var removed = _notifCache.splice(NOTIF_MAX);
+        removed.forEach(function(r){ _notifIdSet.delete(r.id); });
+      }
+
+      // Cập nhật since = ISO của item mới nhất
+      if (items.length > 0 && items[0].created_at) {
+        _notifSince = items[0].created_at;
+      }
+
+      // Đếm lại unread từ cache
+      _notifUnread = _notifCache.filter(function(n){
+        return n.status === 'unread';
+      }).length;
+
+      _updateBellBadge();
+
+      // Re-render nếu panel đang mở
+      var panel = document.getElementById('mmn-bell-panel');
+      if (panel && panel.classList.contains('open')) {
+        _renderBellPanel();
+      }
+
+      // Browser Notification nếu có items mới và có permission
+      if (newCount > 0 && _notifInited) {
+        _tryBrowserNotif(items[0]);
+      }
+      _notifInited = true;
     });
-    html += '</div><button class="bell-all" onclick="_skMarkAllRead()">Danh dau tat ca da doc</button>';
-    return html;
+  }
+
+  // ── Browser Notification API ──────────────────────────────────
+  function _tryBrowserNotif(item) {
+    if (!item || !window.Notification) return;
+    if (Notification.permission !== 'granted') return;
+    var cfg = NOTIF_CFG[item.type] || NOTIF_CFG.info;
+    try {
+      new Notification('SonKhang ERP ' + cfg.label, {
+        body : String(item.title || '').slice(0, 80),
+        icon : '/favicon.ico',
+        tag  : String(item.id),      // deduplicate browser notifs
+        silent: false,
+      });
+    } catch(e) {}
+  }
+
+  function _requestBrowserNotifPermission() {
+    if (!window.Notification) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }
+
+  // ── Polling lifecycle ─────────────────────────────────────────
+  function _startNotifPoll() {
+    if (_notifTimer) return;
+    _notifFetch(true);  // fetch ngay lần đầu
+    _notifTimer = setInterval(function() {
+      // [PERF] Pause khi tab ẩn
+      if (document.visibilityState === 'hidden') return;
+      _notifFetch(false);
+    }, NOTIF_POLL_MS);
+
+    // Resume khi tab hiện lại
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible') _notifFetch(false);
+    });
+  }
+
+  function _stopNotifPoll() {
+    if (_notifTimer) { clearInterval(_notifTimer); _notifTimer = null; }
+  }
+
+  // ── Render panel ──────────────────────────────────────────────
+  function _renderBellPanel() {
+    var panel = document.getElementById('mmn-bell-panel');
+    if (!panel) return;
+
+    var unread = _notifUnread;
+    var now    = _notifFmt();
+    var html   = '';
+
+    // Header
+    html += '<div class="bell-header">'
+          +   '<span class="bell-title">Thông báo</span>'
+          +   '<div style="display:flex;align-items:center;gap:8px;">'
+          +     (unread > 0
+                  ? '<span class="bell-unread">' + unread + ' mới</span>'
+                  : '<span style="font-size:10px;color:var(--text3);">Đã đọc hết</span>')
+          +     '<button id="bell-read-all" style="background:none;border:none;'
+          +     'color:var(--accent2);font-size:10px;font-weight:700;cursor:pointer;'
+          +     'font-family:inherit;padding:2px 6px;">Đọc hết</button>'
+          +   '</div>'
+          + '</div>';
+
+    // List
+    html += '<div class="bell-list" id="bell-list-inner">';
+    if (_notifCache.length === 0) {
+      html += '<div style="text-align:center;padding:32px 16px;color:var(--text3);">'
+            +   '<div style="font-size:28px;margin-bottom:8px;">&#x1F515;</div>'
+            +   '<div style="font-size:12px;font-weight:600;">Chưa có thông báo</div>'
+            + '</div>';
+    } else {
+      _notifCache.forEach(function(n) {
+        var cfg    = NOTIF_CFG[n.type] || NOTIF_CFG.info;
+        var unread = n.status === 'unread';
+        // [OWASP A03] _escHtml() cho mọi giá trị từ server
+        var title  = _escHtml(n.title || '');
+        var body   = _escHtml(n.body  || '');
+        var timeAgo= _notifTimeAgo(n.created_at);
+        var idSafe = _escHtml(String(n.id));
+
+        html += '<div class="bell-item' + (unread ? ' unread' : '') + '"'
+              +      ' data-id="' + idSafe + '"'
+              +      ' data-link="' + _escHtml(n.link || '') + '"'
+              +      ' style="border-left:2px solid ' + (unread ? cfg.color : 'transparent') + ';">'
+              +   '<span class="bell-icon">' + cfg.icon + '</span>'
+              +   '<div class="bell-body" style="flex:1;min-width:0;">'
+              +     '<div class="bell-text" style="font-weight:' + (unread?'700':'400') + ';">'
+              +       title
+              +     '</div>'
+              +     (body ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;'
+              +             'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+              +             body + '</div>' : '')
+              +     '<div class="bell-time">'
+              +       '<span style="color:' + cfg.color + ';font-size:9px;font-weight:700;margin-right:4px;">'
+              +       cfg.label + '</span>' + timeAgo
+              +     '</div>'
+              +   '</div>'
+              +   (unread ? '<span class="bell-dot"></span>' : '')
+              + '</div>';
+      });
+    }
+    html += '</div>';
+
+    // Footer
+    html += '<div class="bell-footer" style="display:flex;justify-content:space-between;'
+          + 'align-items:center;padding:8px 14px;border-top:1px solid var(--border);'
+          + 'background:var(--bg3);">'
+          +   '<span style="font-size:10px;color:var(--text3);">Cập nhật: ' + now + '</span>'
+          +   '<div style="display:flex;gap:8px;">'
+          +     '<button id="bell-cleanup" style="background:none;border:none;color:var(--text3);'
+          +     'font-size:10px;cursor:pointer;font-family:inherit;">Xóa đã đọc</button>'
+          +     '<button id="bell-refresh" style="background:none;border:none;color:var(--accent2);'
+          +     'font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">↻ Làm mới</button>'
+          +   '</div>'
+          + '</div>';
+
+    panel.innerHTML = html;
+    _bindBellPanelEvents(panel);
+  }
+
+  // ── Bind panel events ─────────────────────────────────────────
+  function _bindBellPanelEvents(panel) {
+    // Đọc hết
+    var readAllBtn = document.getElementById('bell-read-all');
+    if (readAllBtn) {
+      readAllBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        _markAllRead();
+      });
+    }
+
+    // Làm mới
+    var refreshBtn = document.getElementById('bell-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        _notifFetch(true);
+      });
+    }
+
+    // Xóa đã đọc
+    var cleanupBtn = document.getElementById('bell-cleanup');
+    if (cleanupBtn) {
+      cleanupBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var api = typeof window.api === 'function' ? window.api : null;
+        if (!api) return;
+        api('notif_cleanup', { days: 7 }, function(err, d) {
+          if (!err && d && d.ok) _notifFetch(true);
+        });
+      });
+    }
+
+    // Click từng item → mark read + navigate
+    panel.querySelectorAll('.bell-item').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id   = el.getAttribute('data-id');
+        var link = el.getAttribute('data-link') || '';
+        _markOneRead(id, link);
+      });
+    });
+  }
+
+  // ── Mark read actions ─────────────────────────────────────────
+  function _markOneRead(id, link) {
+    // [O(1)] Update local state ngay lập tức (optimistic UI)
+    var item = null;
+    for (var ci = 0; ci < _notifCache.length; ci++) {
+      if (String(_notifCache[ci].id) === String(id)) {
+        item = _notifCache[ci]; break;
+      }
+    }
+    if (item && item.status === 'unread') {
+      item.status = 'read';
+      _notifUnread = Math.max(0, _notifUnread - 1);
+      _updateBellBadge();
+      _renderBellPanel();
+    }
+
+    // Sync với GAS
+    var api = typeof window.api === 'function' ? window.api : null;
+    if (api) api('notif_mark_read', { ids: [id] }, function(){});
+
+    // Navigate nếu có link
+    if (link && typeof window.loadGeneric === 'function') {
+      window.loadGeneric(link);
+      var panel = document.getElementById('mmn-bell-panel');
+      if (panel) panel.classList.remove('open');
+    }
+  }
+
+  function _markAllRead() {
+    // Optimistic UI
+    _notifCache.forEach(function(n) { n.status = 'read'; });
+    _notifUnread = 0;
+    _updateBellBadge();
+    _renderBellPanel();
+
+    // Sync GAS
+    var api = typeof window.api === 'function' ? window.api : null;
+    if (api) api('notif_mark_read', { all_read: true }, function(){});
+  }
+
+  // ── Bell panel open/close ─────────────────────────────────────
+  function buildBellPanel() {
+    // Trả về chuỗi rỗng — panel được render bởi _renderBellPanel()
+    return '';
   }
 
   function _bindBellEvents() {
@@ -433,52 +735,76 @@
 
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
+      var isOpen = panel.classList.contains('open');
       panel.classList.toggle('open');
-    });
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('#mmn-bell-btn') && !e.target.closest('#mmn-bell-panel')) {
-        panel.classList.remove('open');
+      if (!isOpen) {
+        // Mở panel → render mới nhất
+        _renderBellPanel();
+        _requestBrowserNotifPermission();
       }
     });
 
-    // Bell items click → mark read
-    panel.querySelectorAll('.bell-item').forEach(function(el) {
-      el.addEventListener('click', function() {
-        var id = parseInt(el.getAttribute('data-id'));
-        var n  = _notifications.find(function(x){ return x.id === id; });
-        if (n) { n.read = true; _refreshBellPanel(); }
-      });
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('#mmn-bell-btn') &&
+          !e.target.closest('#mmn-bell-panel')) {
+        panel.classList.remove('open');
+      }
     });
   }
 
   function _updateBellBadge() {
-    var count = _notifications.filter(function(n){ return !n.read; }).length;
-    var dot   = document.getElementById('mmn-bell-count');
-    if (dot) {
-      dot.textContent = count;
-      dot.style.display = count > 0 ? 'flex' : 'none';
-    }
+    var dot = document.getElementById('mmn-bell-count');
+    if (!dot) return;
+    var count = _notifUnread;
+    dot.textContent = count > 99 ? '99+' : String(count);
+    dot.style.display = count > 0 ? 'flex' : 'none';
   }
 
   function _refreshBellPanel() {
     var panel = document.getElementById('mmn-bell-panel');
-    if (!panel) return;
-    panel.innerHTML = buildBellPanel();
-    _bindBellEvents();
+    if (panel && panel.classList.contains('open')) _renderBellPanel();
     _updateBellBadge();
   }
 
-  // API công khai để các module khác push thông báo vào bell
-  window.skNotify = function(text, type) {
-    _notifications.unshift({ id:Date.now(), type:type||'info', text:text, time:'vua xong', read:false });
+  // ── Public API ────────────────────────────────────────────────
+  window.skNotify = function(text, type, opts) {
+    // Cho phép modules khác push notification cục bộ ngay lập tức
+    opts = opts || {};
+    var id  = 'local-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+    if (_notifIdSet.has(id)) return;
+    _notifIdSet.add(id);
+    var item = {
+      id         : id,
+      type       : type || 'info',
+      title      : String(text || '').slice(0, 120),
+      body       : String(opts.body || ''),
+      link       : String(opts.link || ''),
+      status     : 'unread',
+      created_at : new Date().toISOString(),
+    };
+    _notifCache.unshift(item);
+    if (_notifCache.length > NOTIF_MAX) _notifCache.pop();
+    _notifUnread++;
     _updateBellBadge();
-    _showToast(text);
+    _refreshBellPanel();
+    _showToast(text, type === 'error' ? 'error' : 'ok');
+
+    // Push lên GAS để lưu vào SK_Notifications
+    var api = typeof window.api === 'function' ? window.api : null;
+    if (api && !opts.local_only) {
+      api('notif_push', {
+        type   : item.type,
+        title  : item.title,
+        body   : item.body,
+        link   : item.link,
+        level  : opts.level || 'info',
+        user   : opts.user  || '',
+      }, function(){});
+    }
   };
 
-  window._skMarkAllRead = function() {
-    _notifications.forEach(function(n){ n.read = true; });
-    _refreshBellPanel();
-  };
+  window._skMarkAllRead = function() { _markAllRead(); };
+
 
   function _showToast(msg) {
     var t = document.getElementById('sk-toast');

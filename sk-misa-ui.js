@@ -197,112 +197,530 @@ function _renderDashboard(){
 // ════════════════════════════════════════════════════════════════
 // TAB 2: MAPPING SKU
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// MAPPING MODULE — Upload file / CRUD / Auto-suggest
+// ════════════════════════════════════════════════════════════════
+
+// State riêng cho mapping
+var MS = {
+  view     : 'list',   // 'list' | 'upload_preview'
+  q        : '',
+  preview  : [],       // rows chờ confirm import
+  page     : 1,
+  per_page : 30,
+};
+
+// ── Tab Mapping chính ────────────────────────────────────────────
 function _renderMapping(){
   var el = document.getElementById('misa-body'); if(!el) return;
-  el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">'
-    +'<input id="map-q" type="text" placeholder="Tim SKU, ten SP, ma Misa..." style="flex:1;min-width:180px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;font-family:inherit;">'
-    +'<button id="map-search" style="background:'+C.accent+';border:1px solid '+C.accentB+';color:'+C.accentT+';border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim</button>'
-    +'<button id="map-add" style="background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Them mapping</button>'
-    +'<button id="map-suggest" style="background:'+C.yellow+';border:1px solid '+C.yellowB+';color:'+C.yellowT+';border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F916; Tu dong goi y</button>'
-    +'</div>'
-    +'<div id="map-list"><div style="text-align:center;padding:24px;color:var(--text3);">Dang tai...</div></div>';
+  MS.view = 'list';
 
-  document.getElementById('map-search').addEventListener('click', _loadMapping);
-  document.getElementById('map-q').addEventListener('keydown', function(e){ if(e.keyCode===13) _loadMapping(); });
-  document.getElementById('map-add').addEventListener('click', function(){ _showMappingForm(null); });
-  document.getElementById('map-suggest').addEventListener('click', _showSuggest);
+  el.innerHTML =
+    // ── Toolbar ──────────────────────────────────────────────
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">'
+      +'<input id="map-q" type="text" placeholder="Tim SKU Sapo, ma Misa, ten hang..." '
+        +'style="flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border2);'
+        +'border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;">'
+      +'<button id="map-search-btn" style="'
+        +'background:'+C.accent+';border:1px solid '+C.accentB+';color:'+C.accentT+';'
+        +'border-radius:8px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim</button>'
+      // Upload Excel
+      +'<button id="map-upload-btn" style="'
+        +'background:'+C.cyan+';border:1px solid '+C.cyanB+';color:'+C.cyanT+';'
+        +'border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'
+        +'&#x2B06; Upload file mapping</button>'
+      +'<input id="map-file" type="file" accept=".xlsx,.xls" style="display:none;">'
+      // Them thu cong
+      +'<button id="map-add-btn" style="'
+        +'background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';'
+        +'border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'
+        +'+ Them thu cong</button>'
+      // Auto suggest
+      +'<button id="map-suggest-btn" style="'
+        +'background:'+C.yellow+';border:1px solid '+C.yellowB+';color:'+C.yellowT+';'
+        +'border-radius:10px;padding:9px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'
+        +'&#x1F916; Goi y</button>'
+    +'</div>'
+    // ── Stats bar ─────────────────────────────────────────────
+    +'<div id="map-stats" style="margin-bottom:10px;"></div>'
+    // ── Main list ─────────────────────────────────────────────
+    +'<div id="map-list"></div>';
+
+  // Events
+  document.getElementById('map-search-btn').addEventListener('click', function(){
+    MS.q = (document.getElementById('map-q')||{}).value||'';
+    MS.page = 1;
+    _loadMapping();
+  });
+  document.getElementById('map-q').addEventListener('keydown', function(e){
+    if(e.keyCode===13){ MS.q=this.value; MS.page=1; _loadMapping(); }
+  });
+  document.getElementById('map-upload-btn').addEventListener('click', function(){
+    document.getElementById('map-file').click();
+  });
+  document.getElementById('map-file').addEventListener('change', function(e){
+    var f = e.target.files[0]; if(!f) return;
+    _parseMappingFile(f);
+    this.value = ''; // reset
+  });
+  document.getElementById('map-add-btn').addEventListener('click', function(){ _showMappingForm(null); });
+  document.getElementById('map-suggest-btn').addEventListener('click', _showSuggest);
+
+  _loadMappingStats();
   _loadMapping();
 }
 
+// ── Stats ─────────────────────────────────────────────────────────
+function _loadMappingStats(){
+  var el = document.getElementById('map-stats'); if(!el) return;
+  var apiF = _api(); if(!apiF) return;
+  apiF('misa_get_stats',{}, function(e,d){
+    if(e||!d||!d.ok) return;
+    var m = d.mapping||{};
+    el.innerHTML =
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        +'<div style="background:'+C.accent+';border:1px solid '+C.accentB+';border-radius:8px;padding:6px 14px;font-size:12px;">'
+          +'<span style="color:var(--text3);">Da mapping: </span>'
+          +'<strong style="color:'+C.accentT+';">'+m.active+'</strong>'
+        +'</div>'
+        +(m.unmapped_sp>0
+          ?'<div style="background:'+C.yellow+';border:1px solid '+C.yellowB+';border-radius:8px;padding:6px 14px;font-size:12px;">'
+            +'<span style="color:var(--text3);">Chua mapping: </span>'
+            +'<strong style="color:'+C.yellowT+';">'+m.unmapped_sp+' SP Sapo</strong>'
+          +'</div>' : '')
+        +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px 14px;font-size:12px;color:var(--text3);">'
+          +'Tong danh muc Misa: <strong style="color:var(--text);">'+(m.total||0)+'</strong>'
+        +'</div>'
+      +'</div>';
+  });
+}
+
+// ── List view ────────────────────────────────────────────────────
 function _loadMapping(){
   var el = document.getElementById('map-list'); if(!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);">Dang tai...</div>';
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text3);">Dang tai...</div>';
   var apiF = _api(); if(!apiF) return;
-  apiF('misa_get_mapping', { q:(document.getElementById('map-q')||{}).value||'' }, function(e,d){
-    if(e||!d||!d.ok){ el.innerHTML='<div style="color:var(--red);padding:16px;">'+((d&&d.error)||'Loi')+'</div>'; return; }
+  apiF('misa_get_mapping', { q:MS.q, page:MS.page, limit:MS.per_page }, function(e,d){
+    if(e||!d||!d.ok){ el.innerHTML='<div style="color:var(--red);padding:16px;">Loi: '+((d&&d.error)||'')+'</div>'; return; }
     var rows = d.data||[];
     if(!rows.length){
-      el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text3);">'
-        +'Chua co mapping. Nhan "Tu dong goi y" de ERP tu dong de xuat tu Bang gia.</div>';
+      el.innerHTML = '<div style="text-align:center;padding:48px;">'
+        +'<div style="font-size:32px;margin-bottom:12px;">&#x1F517;</div>'
+        +'<div style="font-size:14px;font-weight:700;color:var(--text2);margin-bottom:8px;">Chua co mapping nao</div>'
+        +'<div style="font-size:12px;color:var(--text3);max-width:360px;margin:0 auto 16px;">'
+          +'Upload file Mapping_Sapo_Misa.xlsx hoac nhan "Goi y" de ERP tu dong de xuat tu Bang gia'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;justify-content:center;">'
+          +'<button id="map-empty-upload" style="background:'+C.cyan+';border:1px solid '+C.cyanB+';color:'+C.cyanT+';'
+            +'border-radius:8px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x2B06; Upload file mapping</button>'
+          +'<button id="map-empty-suggest" style="background:'+C.yellow+';border:1px solid '+C.yellowB+';color:'+C.yellowT+';'
+            +'border-radius:8px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F916; Goi y tu Sapo</button>'
+        +'</div>'
+      +'</div>';
+      document.getElementById('map-empty-upload').addEventListener('click',function(){ document.getElementById('map-file').click(); });
+      document.getElementById('map-empty-suggest').addEventListener('click',_showSuggest);
       return;
     }
+
+    var total = d.total||rows.length;
+    var pages = Math.ceil(total / MS.per_page);
     var html = '<div style="border-radius:12px;border:1px solid var(--border);overflow:auto;">'
-      +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:780px;">'
       +'<thead><tr style="background:var(--bg3);">'
-      +'<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Sapo SKU</th>'
-      +'<th style="padding:9px 12px;text-align:left;">Ten SP Sapo</th>'
-      +'<th style="padding:9px 12px;text-align:left;color:var(--accent2);">Misa Ma hang</th>'
-      +'<th style="padding:9px 12px;text-align:left;">Ten hang Misa</th>'
-      +'<th style="padding:9px 12px;text-align:center;">DVT</th>'
-      +'<th style="padding:9px 12px;text-align:center;">VAT</th>'
-      +'<th style="padding:9px 12px;text-align:center;">Active</th>'
-      +'<th style="padding:9px 12px;"></th>'
+        +'<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">SKU Sapo</th>'
+        +'<th style="padding:9px 12px;text-align:left;">Ten SP Sapo</th>'
+        +'<th style="padding:9px 12px;text-align:left;color:'+C.accentT+';">Ma hang Misa</th>'
+        +'<th style="padding:9px 12px;text-align:left;">Ten hang Misa</th>'
+        +'<th style="padding:9px 12px;text-align:center;">DVT</th>'
+        +'<th style="padding:9px 12px;text-align:right;">Ton kho</th>'
+        +'<th style="padding:9px 12px;text-align:center;">VAT</th>'
+        +'<th style="padding:9px 12px;text-align:right;">Don gia</th>'
+        +'<th style="padding:9px 12px;text-align:center;">Active</th>'
+        +'<th style="padding:9px 12px;width:60px;"></th>'
       +'</tr></thead><tbody>';
-    rows.forEach(function(r){
-      html += '<tr style="border-top:1px solid var(--border);">'
-        +'<td style="padding:8px 12px;font-family:monospace;color:var(--cyan);font-weight:700;">'+_esc(r.sapo_sku)+'</td>'
-        +'<td style="padding:8px 12px;">'+_esc(r.sapo_ten||'')+'</td>'
-        +'<td style="padding:8px 12px;font-family:monospace;color:var(--accent2);font-weight:700;">'+_esc(r.misa_ma)+'</td>'
-        +'<td style="padding:8px 12px;">'+_esc(r.misa_ten||'')+'</td>'
-        +'<td style="padding:8px 12px;text-align:center;">'+_esc(r.misa_dvt||'cai')+'</td>'
-        +'<td style="padding:8px 12px;text-align:center;font-weight:700;color:var(--yellow);">'+r.thue_vat+'%</td>'
-        +'<td style="padding:8px 12px;text-align:center;">'+(r.active?_badge('Active',C.green):_badge('Off',C.red))+'</td>'
-        +'<td style="padding:8px 12px;" id="map-act-'+_esc(r.sapo_sku)+'"></td>'
+
+    rows.forEach(function(r, ri){
+      var tonColor = r.ton_kho < 0 ? 'var(--text3)'
+                   : r.ton_kho === 0 ? 'var(--red)'
+                   : r.ton_kho < 10  ? 'var(--yellow)'
+                   : 'var(--green)';
+      var tonDisp  = r.ton_kho < 0 ? 'N/A' : _fmt(r.ton_kho);
+      html += '<tr style="border-top:1px solid var(--border);" id="map-row-'+ri+'">'
+        +'<td style="padding:8px 12px;font-family:monospace;font-size:11px;color:'+C.cyanT+';font-weight:700;">'+_esc(r.sapo_sku)+'</td>'
+        +'<td style="padding:8px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(r.sapo_ten||'')+'</td>'
+        +'<td style="padding:8px 12px;font-family:monospace;font-size:11px;color:'+C.accentT+';font-weight:700;">'+_esc(r.misa_ma)+'</td>'
+        +'<td style="padding:8px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(r.misa_ten||'')+'</td>'
+        +'<td style="padding:8px 12px;text-align:center;color:var(--text3);">'+_esc(r.misa_dvt||'')+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-weight:700;color:'+tonColor+';">'+tonDisp+'</td>'
+        +'<td style="padding:8px 12px;text-align:center;color:var(--yellow);font-weight:700;">'+r.thue_vat+'%</td>'
+        +'<td style="padding:8px 12px;text-align:right;color:var(--text2);">'+(r.don_gia>0?_fmt(r.don_gia)+'d':'—')+'</td>'
+        +'<td style="padding:8px 12px;text-align:center;">'+(r.active ? _badge('On',[C.green,C.greenB,C.greenT]) : _badge('Off',[C.red,C.redB,C.redT]))+'</td>'
+        +'<td style="padding:8px 12px;" id="map-act-'+ri+'"></td>'
         +'</tr>';
     });
     html += '</tbody></table></div>';
-    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px;">'+d.total+' mapping</div>';
+
+    // Pagination
+    if(pages > 1){
+      html += '<div style="display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap;">';
+      for(var p=1;p<=pages;p++){
+        html += '<button class="map-pg" data-p="'+p+'" style="background:'
+          +(p===MS.page?C.accent:'var(--bg3)')+';border:1px solid '
+          +(p===MS.page?C.accentB:'var(--border2)')+';color:'
+          +(p===MS.page?C.accentT:'var(--text3)')+';border-radius:6px;'
+          +'padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">'+p+'</button>';
+      }
+      html += '</div>';
+    }
+
+    html += '<div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:right;">'+total+' mapping</div>';
     el.innerHTML = html;
 
-    rows.forEach(function(r){
-      var td = document.getElementById('map-act-'+r.sapo_sku); if(!td) return;
-      var editBtn = document.createElement('button');
-      editBtn.innerHTML = '&#x270F;';
-      editBtn.style.cssText='background:'+C.accent+';border:1px solid '+C.accentB+';border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;margin-right:4px;';
-      editBtn.addEventListener('click', function(){ _showMappingForm(r); });
-      var delBtn = document.createElement('button');
-      delBtn.innerHTML = '&#x1F5D1;';
-      delBtn.style.cssText='background:'+C.red+';border:1px solid '+C.redB+';border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;';
-      delBtn.addEventListener('click', function(){
-        if(!confirm('Xoa mapping SKU: '+r.sapo_sku+' ?')) return;
+    // Pagination clicks
+    el.querySelectorAll('.map-pg').forEach(function(btn){
+      btn.addEventListener('click',function(){ MS.page=Number(btn.getAttribute('data-p')); _loadMapping(); });
+    });
+
+    // Row action buttons
+    rows.forEach(function(r, ri){
+      var td = document.getElementById('map-act-'+ri); if(!td) return;
+      var eBtn = document.createElement('button');
+      eBtn.innerHTML='&#x270F;'; eBtn.title='Sua';
+      eBtn.style.cssText='background:'+C.accent+';border:1px solid '+C.accentB+';border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;margin-right:3px;';
+      eBtn.addEventListener('click', function(e){ e.stopPropagation(); _showMappingForm(r); });
+
+      var dBtn = document.createElement('button');
+      dBtn.innerHTML='&#x1F5D1;'; dBtn.title='Xoa';
+      dBtn.style.cssText='background:'+C.red+';border:1px solid '+C.redB+';border-radius:6px;padding:3px 8px;font-size:12px;cursor:pointer;';
+      dBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        if(!confirm('Xoa mapping SKU "'+r.sapo_sku+'" ↔ "'+r.misa_ma+'"?')) return;
         _api()('misa_delete_mapping',{sapo_sku:r.sapo_sku},function(e2,d2){
-          if(!e2&&d2&&d2.ok){ _toast('Da xoa mapping','ok'); _loadMapping(); }
-          else _toast((d2&&d2.error)||'Loi','error');
+          if(!e2&&d2&&d2.ok){ _toast('Da xoa','ok'); _loadMapping(); _loadMappingStats(); }
+          else _toast((d2&&d2.error)||'Loi xoa','error');
         });
       });
-      td.appendChild(editBtn); td.appendChild(delBtn);
+      td.appendChild(eBtn); td.appendChild(dBtn);
     });
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// UPLOAD FILE MAPPING
+// ════════════════════════════════════════════════════════════════
+function _parseMappingFile(file){
+  if(typeof XLSX === 'undefined'){
+    _toast('Thu vien XLSX chua san sang. Cho 2 giay roi thu lai.','error'); return;
+  }
+  _toast('Dang doc file "'+file.name+'"...','ok');
+  var reader = new FileReader();
+  reader.onload = function(ev){
+    try {
+      var wb  = XLSX.read(ev.target.result, {type:'binary', raw:false});
+      // Tim sheet Mapping_Sapo_Misa truoc, fallback sheet dau tien
+      var wsName = 'Mapping_Sapo_Misa';
+      if(wb.SheetNames.indexOf(wsName) < 0) wsName = wb.SheetNames[0];
+      var ws  = wb.Sheets[wsName];
+      var raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+
+      // Tim header row: co 'SKU' hoac 'sku' hoac 'Ma hang Misa'
+      var hdrRow = -1;
+      for(var ri=0; ri<Math.min(raw.length,10); ri++){
+        var row = raw[ri];
+        var joined = row.map(function(c){ return String(c||'').toLowerCase(); }).join('|');
+        if(/sku|sapo/i.test(joined) && /misa|ma.{0,4}hang/i.test(joined)){
+          hdrRow = ri; break;
+        }
+      }
+      if(hdrRow < 0){
+        _toast('Khong tim thay header. File phai co cot "SKU Sapo" va "Ma hang Misa".','error');
+        return;
+      }
+
+      var hdr = raw[hdrRow].map(function(h){ return String(h||'').toLowerCase().trim(); });
+      // Map column indices
+      function fc(patterns){
+        for(var p=0; p<patterns.length; p++)
+          for(var h=0; h<hdr.length; h++)
+            if(hdr[h].indexOf(patterns[p]) >= 0) return h;
+        return -1;
+      }
+      var COL = {
+        stt      : fc(['stt']),
+        sku      : fc(['sku sapo','sapo sku','sku']),
+        ten_sapo : fc(['ten sp sapo','ten sapo','tên sp sapo']),
+        misa_ma  : fc(['ma hang misa','misa ma','ma misa','mã hàng misa','mã']),
+        misa_ten : fc(['ten hang misa','ten misa','tên hàng misa','tên hàng']),
+        dvt      : fc(['dvt','don vi','đvt']),
+        ton      : fc(['ton kho','tồn kho','ton']),
+        sau_thue : fc(['sau thue','sau thuế']),
+        don_gia  : fc(['don gia','đơn giá','gia ban','giá bán']),
+        vat      : fc(['% vat','vat','% thue','thue']),
+      };
+
+      if(COL.sku < 0 || COL.misa_ma < 0){
+        _toast('Khong tim thay cot SKU Sapo (B) hoac Ma hang Misa (D). Dung file Mapping_Sapo_Misa.xlsx.','error');
+        return;
+      }
+
+      // Parse rows
+      var rows = [];
+      var skipped = 0;
+      for(var ri2=hdrRow+1; ri2<raw.length; ri2++){
+        var r = raw[ri2];
+        var sku    = String(r[COL.sku]||'').trim();
+        var maMisa = String(r[COL.misa_ma]||'').trim();
+        // Skip empty / header duplicates
+        if(!sku || !maMisa) { skipped++; continue; }
+        if(/^sku|^stt/i.test(sku)) continue;
+
+        rows.push({
+          stt      : ri2 - hdrRow,
+          sku_sapo : sku,
+          ten_sapo : COL.ten_sapo>=0 ? String(r[COL.ten_sapo]||'').trim() : '',
+          misa_ma  : maMisa,
+          misa_ten : COL.misa_ten>=0 ? String(r[COL.misa_ten]||'').trim() : '',
+          dvt      : COL.dvt>=0     ? String(r[COL.dvt]||'cai').trim() : 'cai',
+          don_gia  : COL.don_gia>=0 ? (parseFloat(String(r[COL.don_gia]).replace(/[^0-9.]/g,''))||0) : 0,
+          vat      : COL.vat>=0     ? (parseInt(String(r[COL.vat]).replace(/[^0-9]/g,''))||10) : 10,
+          sau_thue : COL.sau_thue>=0 ? String(r[COL.sau_thue]||'') : '',
+          ton_kho  : COL.ton>=0     ? (parseFloat(String(r[COL.ton]).replace(/[^0-9.]/g,''))||null) : null,
+        });
+      }
+
+      if(!rows.length){
+        _toast('Khong co dong nao hop le. Kiem tra lai file.','error'); return;
+      }
+
+      var filled   = rows.filter(function(r){ return r.sku_sapo && r.misa_ma; });
+      var no_sku   = rows.filter(function(r){ return !r.sku_sapo && r.misa_ma; });
+      var no_gia   = rows.filter(function(r){ return r.sku_sapo && r.misa_ma && !r.don_gia; });
+
+      _toast('Doc duoc '+filled.length+' dong, '+no_sku.length+' chua co SKU. Xem truoc...','ok');
+
+      // Show preview
+      MS.preview = rows;
+      _showUploadPreview(rows, file.name, {
+        total  : rows.length,
+        filled : filled.length,
+        no_sku : no_sku.length,
+        no_gia : no_gia.length,
+        skipped: skipped,
+      });
+    } catch(err){
+      _toast('Loi doc file: '+err.message,'error');
+      console.error(err);
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ── Preview table trước khi import ──────────────────────────────
+function _showUploadPreview(rows, fileName, stats){
+  MS.view = 'upload_preview';
+  var el = document.getElementById('misa-body'); if(!el) return;
+
+  // Stats summary
+  var summaryHtml =
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:14px 18px;margin-bottom:14px;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">'
+        +'<div>'
+          +'<div style="font-size:14px;font-weight:900;margin-bottom:4px;">Xem truoc: <span style="color:'+C.cyanT+';">'+_esc(fileName)+'</span></div>'
+          +'<div style="font-size:11px;color:var(--text3);">Kiem tra cac dong truoc khi luu vao ERP</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;">'
+          +'<span style="background:'+C.green+';border:1px solid '+C.greenB+';border-radius:6px;padding:4px 10px;color:'+C.greenT+';font-weight:700;">'+stats.filled+' dong du dieu kien</span>'
+          +(stats.no_sku>0 ? '<span style="background:'+C.yellow+';border:1px solid '+C.yellowB+';border-radius:6px;padding:4px 10px;color:'+C.yellowT+';font-weight:700;">'+stats.no_sku+' chua co SKU</span>' : '')
+          +(stats.no_gia>0 ? '<span style="background:'+C.red+';border:1px solid '+C.redB+';border-radius:6px;padding:4px 10px;color:'+C.redT+';font-weight:700;">'+stats.no_gia+' chua co gia</span>' : '')
+        +'</div>'
+      +'</div>'
+      // Progress bar
+      +'<div style="margin-top:10px;background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">'
+        +'<div style="width:'+(Math.round(stats.filled/Math.max(stats.total,1)*100))+'%;height:100%;background:var(--green);border-radius:4px;transition:width .5s;"></div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--text3);margin-top:4px;">'+stats.filled+' / '+stats.total+' dong hop le</div>'
+    +'</div>';
+
+  // Filter & controls
+  var controlHtml =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">'
+      +'<span style="font-size:12px;font-weight:700;color:var(--text2);">Loc:</span>'
+      +'<button class="pv-filter" data-f="all" style="background:'+C.accent+';border:1px solid '+C.accentB+';color:'+C.accentT+';border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Tat ca ('+stats.total+')</button>'
+      +'<button class="pv-filter" data-f="ok" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Co SKU va Ma Misa ('+stats.filled+')</button>'
+      +(stats.no_sku>0 ? '<button class="pv-filter" data-f="no_sku" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Chua SKU ('+stats.no_sku+')</button>' : '')
+      +'<div style="flex:1;"></div>'
+      +'<button id="pv-cancel-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x2190; Huy bo</button>'
+      +'<button id="pv-import-btn" style="background:linear-gradient(135deg,var(--green),var(--cyan));border:none;color:#1A2340;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;">&#x1F4E5; Luu '+stats.filled+' dong vao ERP</button>'
+    +'</div>';
+
+  // Table preview
+  var tableHtml = '<div id="pv-table-wrap">';
+  tableHtml += _buildPreviewTable(rows, 'all');
+  tableHtml += '</div>';
+
+  el.innerHTML = summaryHtml + controlHtml + tableHtml;
+
+  // Events
+  document.getElementById('pv-cancel-btn').addEventListener('click', function(){
+    MS.view = 'list';
+    MS.preview = [];
+    _renderMapping();
+  });
+
+  document.getElementById('pv-import-btn').addEventListener('click', function(){
+    _doImportMapping(rows.filter(function(r){ return r.sku_sapo && r.misa_ma; }));
+  });
+
+  el.querySelectorAll('.pv-filter').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      el.querySelectorAll('.pv-filter').forEach(function(b){
+        b.style.background='var(--bg3)'; b.style.borderColor='var(--border2)'; b.style.color='var(--text3)';
+      });
+      btn.style.background=C.accent; btn.style.borderColor=C.accentB; btn.style.color=C.accentT;
+      var f = btn.getAttribute('data-f');
+      var filtered = f==='ok'   ? rows.filter(function(r){ return r.sku_sapo && r.misa_ma; })
+                   : f==='no_sku' ? rows.filter(function(r){ return !r.sku_sapo && r.misa_ma; })
+                   : rows;
+      document.getElementById('pv-table-wrap').innerHTML = _buildPreviewTable(filtered, f);
+    });
+  });
+}
+
+// Build preview table HTML
+function _buildPreviewTable(rows, filter){
+  if(!rows.length) return '<div style="text-align:center;padding:32px;color:var(--text3);">Khong co dong nao phu hop.</div>';
+
+  var html = '<div style="border-radius:12px;border:1px solid var(--border);overflow:auto;">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:800px;">'
+    +'<thead><tr style="background:var(--bg3);">'
+      +'<th style="padding:8px 10px;text-align:center;font-size:10px;font-weight:800;color:var(--text3);">TT</th>'
+      +'<th style="padding:8px 10px;text-align:left;color:'+C.redT+';">SKU Sapo</th>'
+      +'<th style="padding:8px 10px;text-align:left;color:'+C.redT+';">Ten SP Sapo</th>'
+      +'<th style="padding:8px 10px;text-align:left;color:'+C.accentT+';">Ma Misa</th>'
+      +'<th style="padding:8px 10px;text-align:left;color:'+C.accentT+';">Ten hang Misa</th>'
+      +'<th style="padding:8px 10px;text-align:center;">DVT</th>'
+      +'<th style="padding:8px 10px;text-align:right;">Don gia</th>'
+      +'<th style="padding:8px 10px;text-align:center;">VAT</th>'
+      +'<th style="padding:8px 10px;text-align:center;">Trang thai</th>'
+    +'</tr></thead><tbody>';
+
+  rows.forEach(function(r, ri){
+    var hasSku   = !!r.sku_sapo;
+    var hasMisa  = !!r.misa_ma;
+    var hasGia   = r.don_gia > 0;
+    var statusBg, statusLabel, statusC;
+    if(hasSku && hasMisa){ statusBg=C.green; statusLabel='OK'; statusC=C.greenT; }
+    else if(!hasSku && hasMisa){ statusBg=C.yellow; statusLabel='Thieu SKU'; statusC=C.yellowT; }
+    else{ statusBg=C.red; statusLabel='Thieu Ma'; statusC=C.redT; }
+
+    var rowBg = ri%2===0 ? 'var(--bg2)' : 'var(--bg3)';
+    html += '<tr style="border-top:1px solid var(--border);background:'+rowBg+';">'
+      +'<td style="padding:6px 10px;text-align:center;color:var(--text3);">'+r.stt+'</td>'
+      +'<td style="padding:6px 10px;font-family:monospace;font-size:10px;color:'+C.cyanT+';font-weight:700;">'
+        +(hasSku ? _esc(r.sku_sapo) : '<span style="color:var(--red);font-style:italic;">chua dien</span>')+'</td>'
+      +'<td style="padding:6px 10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(r.ten_sapo||'')+'</td>'
+      +'<td style="padding:6px 10px;font-family:monospace;font-size:10px;color:'+C.accentT+';font-weight:700;">'
+        +(hasMisa ? _esc(r.misa_ma) : '<span style="color:var(--red);">—</span>')+'</td>'
+      +'<td style="padding:6px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(r.misa_ten||'')+'</td>'
+      +'<td style="padding:6px 10px;text-align:center;color:var(--text3);">'+_esc(r.dvt||'')+'</td>'
+      +'<td style="padding:6px 10px;text-align:right;'+(hasGia?'':'color:var(--text3);font-style:italic;')+';">'
+        +(hasGia ? _fmt(r.don_gia)+'d' : 'chua co')+'</td>'
+      +'<td style="padding:6px 10px;text-align:center;color:var(--yellow);">'+r.vat+'%</td>'
+      +'<td style="padding:6px 10px;text-align:center;">'+_badge(statusLabel,statusBg)+'</td>'
+      +'</tr>';
+  });
+  html += '</tbody></table></div>';
+  html += '<div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right;">Hien thi '+rows.length+' dong</div>';
+  return html;
+}
+
+// ── Thực hiện import ─────────────────────────────────────────────
+function _doImportMapping(validRows){
+  if(!validRows.length){ _toast('Khong co dong hop le de luu','error'); return; }
+  var btn = document.getElementById('pv-import-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Dang luu...'; }
+  var apiF = _api(); if(!apiF) return;
+
+  // Convert to format GAS expects: [stt, sku, ten_sapo, ma_misa, ten_misa, dvt, ton, sau, gia, vat]
+  var rows = validRows.map(function(r){
+    return [r.stt||'', r.sku_sapo, r.ten_sapo||'', r.misa_ma, r.misa_ten||'',
+            r.dvt||'cai', r.ton_kho||'', r.sau_thue||'', r.don_gia||0, r.vat||10];
+  });
+
+  apiF('misa_import_mapping_excel', { rows:rows }, function(e,d){
+    if(btn){ btn.disabled=false; btn.textContent='Luu vao ERP'; }
+    if(!e && d && d.ok){
+      // Thanh cong
+      MS.view = 'list';
+      MS.preview = [];
+      var msg = '&#x2705; Da luu ' + (d.created||0) + ' moi + ' + (d.updated||0) + ' cap nhat';
+      if(d.skipped) msg += ' (' + d.skipped + ' bo qua)';
+      _toast(msg, 'ok');
+      // Show success state briefly then go back to list
+      var el = document.getElementById('misa-body');
+      if(el){
+        el.innerHTML = '<div style="text-align:center;padding:48px;">'
+          +'<div style="font-size:48px;margin-bottom:12px;">&#x2705;</div>'
+          +'<div style="font-size:16px;font-weight:900;color:var(--green);margin-bottom:8px;">Import thanh cong!</div>'
+          +'<div style="font-size:13px;color:var(--text2);">'+_esc(d.msg||'')+'</div>'
+        +'</div>';
+        setTimeout(function(){ _renderMapping(); }, 1800);
+      }
+      _loadMappingStats();
+    } else {
+      _toast((d&&d.error)||'Loi luu mapping','error');
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════
+// FORM THEM / SUA MAPPING (thu cong)
+// ════════════════════════════════════════════════════════════════
 function _showMappingForm(row){
   var isEdit = !!row;
   var h = '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">'
-    +'<div style="font-size:15px;font-weight:900;">'+(isEdit?'Sua mapping':'Them mapping SKU')+'</div>'
-    +'<button id="mf-x" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1;">&#x00D7;</button></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:20px;">'
-    +_inp('mf-sku','Sapo SKU *','text',row?row.sapo_sku:'','VD: SP001 hoac SAPO-12345')
-    +_inp('mf-ten','Ten SP Sapo','text',row?row.sapo_ten:'','')
-    +_inp('mf-mma','Misa Ma hang *','text',row?row.misa_ma:'','VD: VT001')
-    +_inp('mf-mten','Misa Ten hang','text',row?row.misa_ten:'','')
-    +_inp('mf-dvt','Don vi tinh','text',row?row.misa_dvt:'cai','cai / hop / kg...')
-    +_sel('mf-vat','% Thue VAT',[['0','0%'],['5','5%'],['8','8%'],['10','10%']], row?String(row.thue_vat||10):'10')
-    +_inp('mf-gia','Don gia Misa (tham khao)','number',row?row.don_gia:0,'')
-    +_sel('mf-active','Trang thai',[['TRUE','Active'],['FALSE','Inactive']], row&&!row.active?'FALSE':'TRUE')
-    +'<div style="grid-column:1/-1;">'+_inp('mf-gc','Ghi chu','text',row?row.ghi_chu:'','')+'</div>'
+    +'<div>'
+      +'<div style="font-size:15px;font-weight:900;">'+(isEdit ? '&#x270F; Sua mapping' : '+ Them mapping moi')+'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:2px;">Moi mapping = 1 SKU Sapo &#x2194; 1 Ma hang Misa</div>'
+    +'</div>'
+    +'<button id="mf-x" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;line-height:1;">&#x00D7;</button>'
+    +'</div>'
+    +'<div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">'
+      // Sapo side
+      +'<div style="grid-column:1/-1;background:rgba(255,77,109,.05);border:1px solid rgba(255,77,109,.15);border-radius:10px;padding:12px 14px;">'
+        +'<div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin-bottom:10px;">SAPO (ban dien)</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'
+          +_inp('mf-sku','SKU Sapo *','text', row?row.sapo_sku:'', 'VD: SP001 hoac ID Sapo')
+          +_inp('mf-ten','Ten SP Sapo','text', row?row.sapo_ten:'', 'De doi chieu')
+        +'</div>'
+      +'</div>'
+      // Misa side
+      +'<div style="grid-column:1/-1;background:rgba(0,214,143,.05);border:1px solid rgba(0,214,143,.15);border-radius:10px;padding:12px 14px;">'
+        +'<div style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:var(--green);margin-bottom:10px;">MISA (theo danh muc Misa)</div>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'
+          +_inp('mf-mma','Ma hang Misa *','text', row?row.misa_ma:'', 'VD: VT0001, DV009')
+          +_inp('mf-mten','Ten hang Misa','text', row?row.misa_ten:'', '')
+          +_inp('mf-dvt','Don vi tinh','text', row?row.misa_dvt:'cai', 'Thung/Goi/Hop/Kg...')
+          +_sel('mf-vat','% Thue VAT',[['0','0%'],['5','5%'],['8','8%'],['10','10%']], row?String(row.thue_vat||10):'10')
+          +_inp('mf-gia','Don gia ban (chua thue)','number', row?row.don_gia:0, '0')
+          +_sel('mf-active','Trang thai',[['TRUE','Active (dung)'],['FALSE','Inactive (bo qua)']], row&&!row.active?'FALSE':'TRUE')
+        +'</div>'
+      +'</div>'
+      +'<div style="grid-column:1/-1;">'+_inp('mf-gc','Ghi chu','text', row?row.ghi_chu:'', '')+'</div>'
     +'</div>'
     +'<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">'
-    +'<button id="mf-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
-    +'<button id="mf-save" style="background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'+(isEdit?'Luu thay doi':'Them mapping')+'</button>'
+      +'<button id="mf-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
+      +'<button id="mf-save" style="background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'+(isEdit?'&#x2705; Luu thay doi':'&#x2795; Them mapping')+'</button>'
     +'</div>';
-  _modal(h,'620px');
-  document.getElementById('mf-x').addEventListener('click',_cm);
-  document.getElementById('mf-cancel').addEventListener('click',_cm);
-  document.getElementById('mf-save').addEventListener('click',function(){
-    var sku=document.getElementById('mf-sku').value.trim();
-    var mma=document.getElementById('mf-mma').value.trim();
-    if(!sku||!mma){ _toast('Nhap Sapo SKU va Misa Ma hang','error'); return; }
-    var btn=document.getElementById('mf-save'); btn.disabled=true;
+
+  _modal(h, '680px');
+  document.getElementById('mf-x').addEventListener('click', _cm);
+  document.getElementById('mf-cancel').addEventListener('click', _cm);
+  document.getElementById('mf-save').addEventListener('click', function(){
+    var sku = document.getElementById('mf-sku').value.trim();
+    var mma = document.getElementById('mf-mma').value.trim();
+    if(!sku || !mma){ _toast('Nhap SKU Sapo va Ma hang Misa','error'); return; }
+    var btn = document.getElementById('mf-save'); btn.disabled=true;
     _api()('misa_save_mapping',{
       sapo_sku:sku, sapo_ten:document.getElementById('mf-ten').value,
       misa_ma:mma,  misa_ten:document.getElementById('mf-mten').value,
@@ -313,73 +731,136 @@ function _showMappingForm(row){
       ghi_chu:document.getElementById('mf-gc').value
     }, function(e2,d2){
       btn.disabled=false;
-      if(!e2&&d2&&d2.ok){ _toast('Da luu mapping','ok'); _cm(); _loadMapping(); }
-      else _toast((d2&&d2.error)||'Loi','error');
+      if(!e2&&d2&&d2.ok){
+        _toast((isEdit?'Da cap nhat':'Da them')+' mapping: '+sku+' → '+mma,'ok');
+        _cm(); _loadMapping(); _loadMappingStats();
+      } else _toast((d2&&d2.error)||'Loi luu','error');
     });
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// AUTO SUGGEST từ BangGia Sapo
+// ════════════════════════════════════════════════════════════════
 function _showSuggest(){
   var apiF = _api(); if(!apiF) return;
   apiF('misa_auto_suggest',{}, function(e,d){
     if(e||!d||!d.ok){ _toast((d&&d.error)||'Loi goi y','error'); return; }
     var rows = d.data||[];
-    if(!rows.length){ _toast('Tat ca SP da co mapping!','ok'); return; }
-    var h = '<div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:15px;font-weight:900;">Tu dong goi y mapping ('+(d.total||rows.length)+' SP chua map)</div>'
-      +'<div style="padding:16px;max-height:60vh;overflow-y:auto;">'
-      +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px;">ERP goi y dung Sapo SKU = Misa Ma hang. Ban co the sua truoc khi luu hang loat.</div>'
+    if(!rows.length){ _toast('Tat ca san pham Sapo da co mapping!','ok'); return; }
+
+    var h = '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">'
+      +'<div>'
+        +'<div style="font-size:15px;font-weight:900;">&#x1F916; Goi y mapping tu Sapo</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px;">'+(d.total||rows.length)+' san pham chua co mapping · Sua "Ma Misa" cho dung truoc khi luu</div>'
+      +'</div>'
+      +'<button id="sg-x" style="background:none;border:none;color:var(--text3);font-size:22px;cursor:pointer;">&#x00D7;</button>'
+    +'</div>'
+    +'<div style="padding:12px 16px;border-bottom:1px solid var(--border);background:'+C.yellow+';font-size:11px;color:'+C.yellowT+';">'
+      +'&#x26A0; Misa Ma hang phai khop CHINH XAC voi ma trong danh muc Misa. ERP tu goi y dung Sapo SKU = Misa Ma, ban can sua lai cho dung.'
+    +'</div>'
+    +'<div style="padding:16px;max-height:55vh;overflow-y:auto;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        +'<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">'
+          +'<input type="checkbox" id="sg-all"> <span>Chon tat ca</span>'
+        +'</label>'
+        +'<span style="font-size:11px;color:var(--text3);">Chon SP muon them mapping</span>'
+      +'</div>'
       +'<div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;">'
-      +'<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:var(--bg3);">'
-      +'<th style="padding:8px;"><input type="checkbox" id="sg-all"></th>'
-      +'<th style="padding:8px 12px;text-align:left;">Sapo SKU</th>'
-      +'<th style="padding:8px 12px;text-align:left;">Ten SP</th>'
-      +'<th style="padding:8px 12px;text-align:left;">Goi y Misa Ma</th>'
-      +'</tr></thead><tbody>'
-      +rows.map(function(r,i){
-        return '<tr style="border-top:1px solid var(--border);">'
-          +'<td style="padding:6px 8px;text-align:center;"><input type="checkbox" class="sg-cb" data-sku="'+_esc(r.sapo_sku)+'" data-ten="'+_esc(r.sapo_ten)+'" data-mma="'+_esc(r.suggested_misa_ma)+'" data-mten="'+_esc(r.suggested_misa_ten)+'" data-dvt="'+_esc(r.suggested_dvt)+'" checked></td>'
-          +'<td style="padding:6px 12px;font-family:monospace;color:var(--cyan);">'+_esc(r.sapo_sku)+'</td>'
-          +'<td style="padding:6px 12px;">'+_esc(r.sapo_ten||'')+'</td>'
-          +'<td style="padding:6px 12px;"><input class="sg-mma" data-sku="'+_esc(r.sapo_sku)+'" value="'+_esc(r.suggested_misa_ma)+'" style="width:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:11px;font-family:monospace;color:var(--accent2);"></td>'
-          +'</tr>';
-      }).join('')
-      +'</tbody></table></div></div>'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid var(--border);">'
-      +'<span style="font-size:11px;color:var(--text3);">Chon SP muon them mapping</span>'
+        +'<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:600px;">'
+          +'<thead><tr style="background:var(--bg3);">'
+            +'<th style="padding:8px;width:36px;"></th>'
+            +'<th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">SKU Sapo</th>'
+            +'<th style="padding:8px 12px;text-align:left;">Ten SP Sapo</th>'
+            +'<th style="padding:8px 12px;text-align:left;color:'+C.accentT+';">Ma Misa (sua neu can)</th>'
+            +'<th style="padding:8px 12px;text-align:center;">DVT</th>'
+            +'<th style="padding:8px 12px;text-align:right;">Gia ban</th>'
+          +'</tr></thead><tbody>'
+          +rows.map(function(r,i){
+            var bg = i%2===0 ? 'var(--bg2)' : 'var(--bg3)';
+            return '<tr style="border-top:1px solid var(--border);background:'+bg+';">'
+              +'<td style="padding:6px 8px;text-align:center;"><input type="checkbox" class="sg-cb" checked '
+                +'data-sku="'+_esc(r.sapo_sku)+'" data-ten="'+_esc(r.sapo_ten)+'" '
+                +'data-dvt="'+_esc(r.suggested_dvt||'cai')+'" '
+                +'data-mten="'+_esc(r.suggested_misa_ten||r.sapo_ten)+'" '
+                +'data-gia="'+_esc(String(r.gia_ban||0))+'"></td>'
+              +'<td style="padding:6px 12px;font-family:monospace;font-size:10px;color:'+C.cyanT+';font-weight:700;">'+_esc(r.sapo_sku)+'</td>'
+              +'<td style="padding:6px 12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(r.sapo_ten||'')+'</td>'
+              +'<td style="padding:6px 12px;">'
+                +'<input class="sg-mma" data-sku="'+_esc(r.sapo_sku)+'" value="'+_esc(r.suggested_misa_ma||r.sapo_sku)+'" '
+                  +'style="width:100%;min-width:100px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.4);'
+                  +'border-radius:6px;padding:4px 8px;font-size:11px;font-family:monospace;color:'+C.accentT+';font-weight:700;">'
+              +'</td>'
+              +'<td style="padding:6px 12px;text-align:center;color:var(--text3);">'+_esc(r.suggested_dvt||'cai')+'</td>'
+              +'<td style="padding:6px 12px;text-align:right;color:var(--text3);">'+(r.gia_ban>0?_fmt(r.gia_ban):'—')+'</td>'
+              +'</tr>';
+          }).join('')
+          +'</tbody></table>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid var(--border);">'
+      +'<span id="sg-count" style="font-size:12px;color:var(--text3);">'+rows.length+' da chon</span>'
       +'<div style="display:flex;gap:8px;">'
-      +'<button id="sg-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
-      +'<button id="sg-save" style="background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Luu cac muc da chon</button>'
-      +'</div></div>';
-    _modal(h,'800px');
-    document.getElementById('sg-cancel').addEventListener('click',_cm);
-    document.getElementById('sg-all').addEventListener('change',function(){
-      document.querySelectorAll('.sg-cb').forEach(function(cb){ cb.checked=this.checked; },this);
+        +'<button id="sg-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
+        +'<button id="sg-save" style="background:'+C.green+';border:1px solid '+C.greenB+';color:'+C.greenT+';border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x2795; Them cac muc da chon</button>'
+      +'</div>'
+    +'</div>';
+
+    _modal(h, '860px');
+    document.getElementById('sg-x').addEventListener('click', _cm);
+    document.getElementById('sg-cancel').addEventListener('click', _cm);
+
+    var allCb = document.getElementById('sg-all');
+    allCb.addEventListener('change', function(){
+      document.querySelectorAll('.sg-cb').forEach(function(cb){ cb.checked=allCb.checked; });
+      _updateSgCount();
     });
-    document.getElementById('sg-save').addEventListener('click',function(){
+    document.querySelectorAll('.sg-cb').forEach(function(cb){
+      cb.addEventListener('change', _updateSgCount);
+    });
+
+    function _updateSgCount(){
+      var n = document.querySelectorAll('.sg-cb:checked').length;
+      var sc = document.getElementById('sg-count');
+      if(sc) sc.textContent = n + ' da chon';
+    }
+
+    document.getElementById('sg-save').addEventListener('click', function(){
       var cbs = document.querySelectorAll('.sg-cb:checked');
       if(!cbs.length){ _toast('Chua chon SP nao','error'); return; }
-      var btn=document.getElementById('sg-save'); btn.disabled=true; btn.textContent='Dang luu...';
-      var pending=cbs.length, ok=0, fail=0;
+      var btn = document.getElementById('sg-save');
+      btn.disabled=true; btn.textContent='Dang luu...';
+      var pending = cbs.length, ok=0, fail=0;
       cbs.forEach(function(cb){
         var sku = cb.getAttribute('data-sku');
-        var mmaInput = document.querySelector('.sg-mma[data-sku="'+sku+'"]');
+        var mmaIn = document.querySelector('.sg-mma[data-sku="'+sku+'"]');
+        var mma = (mmaIn ? mmaIn.value : sku).trim();
+        if(!mma){ fail++; pending--; if(!pending) _sgDone(ok,fail); return; }
         _api()('misa_save_mapping',{
-          sapo_sku:sku, sapo_ten:cb.getAttribute('data-ten'),
-          misa_ma:(mmaInput?mmaInput.value:cb.getAttribute('data-mma')).trim(),
-          misa_ten:cb.getAttribute('data-mten'),
-          misa_dvt:cb.getAttribute('data-dvt'), thue_vat:10, active:true
-        },function(e2,d2){
+          sapo_sku:sku,
+          sapo_ten:cb.getAttribute('data-ten')||'',
+          misa_ma:mma,
+          misa_ten:cb.getAttribute('data-mten')||'',
+          misa_dvt:cb.getAttribute('data-dvt')||'cai',
+          don_gia:Number(cb.getAttribute('data-gia')||0),
+          thue_vat:10, active:true
+        }, function(e2,d2){
           if(!e2&&d2&&d2.ok) ok++; else fail++;
           pending--;
-          if(pending===0){
-            _toast('Da luu '+ok+' mapping'+(fail?' ('+fail+' loi)':''),'ok');
-            _cm(); _loadMapping();
-          }
+          if(!pending) _sgDone(ok,fail);
         });
       });
     });
+
+    function _sgDone(ok,fail){
+      _toast('Da luu '+ok+' mapping'+(fail?' ('+fail+' loi)':''),'ok');
+      _cm(); _loadMapping(); _loadMappingStats();
+    }
   });
 }
+
+
+
 
 // ════════════════════════════════════════════════════════════════
 // TAB 3: TỒN KHO MISA

@@ -88,23 +88,218 @@
     document.querySelectorAll('[data-crm-tab]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var tab = btn.getAttribute('data-crm-tab');
+        STATE.curTab = tab;
         document.querySelectorAll('[data-crm-tab]').forEach(function(b){
           b.style.background='var(--bg3)'; b.style.borderColor='var(--border2)'; b.style.color='var(--text3)';
         });
         btn.style.background='rgba(79,111,255,.15)'; btn.style.borderColor='rgba(79,111,255,.3)'; btn.style.color='var(--accent2)';
-        if (tab==='list')     { _loadKPI(); _loadList(); }
+        if (tab==='list')          { _loadKPI(); _loadList(); }
         else if (tab==='loyalty')  _renderLoyaltyDashboard();
         else if (tab==='rfm')      _renderRFM();
         else if (tab==='contract') _renderContracts();
       });
     });
+    // Auto-switch to STATE.curTab (set by dedicated loaders)
+    var initTab = STATE.curTab || 'list';
+    var initBtn = document.querySelector('[data-crm-tab="'+initTab+'"]');
+    if (initBtn) initBtn.click();
+    else { _loadKPI(); _loadList(); }
 
     _loadKPI();
     _loadList();
   }
+  // Entry points chính
   window.loadCRM        = loadCRM;
-  window.loadKhachHang  = loadCRM; // alias cho SK_LOADERS cu
+  window.loadKhachHang  = loadCRM;
   window.loadSalesCRM   = loadCRM;
+
+  // Dedicated loaders cho từng tab CRM — dùng cho sidebar/SK_LOADERS
+  window.loadCRMKhachHang = function () {
+    STATE.curTab = 'list';
+    loadCRM();
+  };
+  window.loadCRMLoyalty = function () {
+    STATE.curTab = 'loyalty';
+    loadCRM();
+  };
+  window.loadCRMRFM = function () {
+    STATE.curTab = 'rfm';
+    loadCRM();
+  };
+  // ── CRM Báo cáo ────────────────────────────────────────────────
+  window.loadCRMBaoCao = function () {
+    STATE.curTab = 'bao-cao';
+    var ct = _ct(); if (!ct) return;
+    ct.innerHTML = '<div class="fade-in" style="padding:24px;">'
+      + '<div style="margin-bottom:20px;">'
+      + '<h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F4C8; Bao cao CRM</h1>'
+      + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Tong quan khach hang · Doanh thu · Loyalty · Phan khuc</p>'
+      + '</div>'
+      + '<div id="crm-bc-kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:20px;">'
+      + '<div style="text-align:center;padding:24px;color:var(--text3);">Dang tai...</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;" id="crm-bc-top10">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x1F3C6; Top 10 KH theo doanh so</div>'
+      + '<div style="text-align:center;color:var(--text3);font-size:12px;">Dang tai...</div>'
+      + '</div>'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;" id="crm-bc-nhom">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x1F465; Phan bo theo nhom</div>'
+      + '<div style="text-align:center;color:var(--text3);font-size:12px;">Dang tai...</div>'
+      + '</div>'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;" id="crm-bc-no">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;color:var(--red);">&#x1F4B3; Cong no khach hang</div>'
+      + '<div style="text-align:center;color:var(--text3);font-size:12px;">Dang tai...</div>'
+      + '</div>'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;" id="crm-bc-tier">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x1F451; Phan bo hang Loyalty</div>'
+      + '<div style="text-align:center;color:var(--text3);font-size:12px;">Dang tai...</div>'
+      + '</div>'
+      + '</div></div>';
+
+    var apiF = _api(); if (!apiF) return;
+    apiF('sales_get_customers', { limit:1000 }, function(e,d) {
+      if (e || !d || !d.ok) return;
+      var rows = d.data || [];
+
+      // KPI
+      var tongKH    = rows.length;
+      var tongMua   = rows.reduce(function(a,r){ return a + Number(r.tong_mua||0); }, 0);
+      var tongNo    = rows.reduce(function(a,r){ return a + Number(r.no_cuoi||0); }, 0);
+      var tongDiem  = rows.reduce(function(a,r){ return a + Number(r.diem_tl||0); }, 0);
+      var coNo      = rows.filter(function(r){ return Number(r.no_cuoi||0)>0; }).length;
+
+      var kpiEl = document.getElementById('crm-bc-kpi');
+      if (kpiEl) kpiEl.innerHTML = [
+        { icon:'&#x1F465;', label:'Tong KH',      val:tongKH,          c:'var(--text)' },
+        { icon:'&#x1F4B0;', label:'Tong doanh so', val:_fmt(tongMua)+'d', c:'var(--green)' },
+        { icon:'&#x1F4B3;', label:'Tong no',       val:_fmt(tongNo)+'d',  c:tongNo>0?'var(--red)':'var(--text3)' },
+        { icon:'&#x2B50;',  label:'Tong diem TL',  val:_fmt(tongDiem),    c:'var(--cyan)' },
+        { icon:'&#x26A0;',  label:'KH co no',      val:coNo,              c:coNo>0?'var(--yellow)':'var(--text3)' },
+      ].map(function(k){
+        return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:center;">'
+          + '<div style="font-size:20px;">' + k.icon + '</div>'
+          + '<div><div style="font-size:16px;font-weight:900;color:' + k.c + ';">' + k.val + '</div>'
+          + '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">' + k.label + '</div></div></div>';
+      }).join('');
+
+      // Top 10
+      var top10El = document.getElementById('crm-bc-top10');
+      if (top10El) {
+        var sorted = rows.slice().sort(function(a,b){ return Number(b.tong_mua||0)-Number(a.tong_mua||0); });
+        var html = '<div style="border-radius:8px;border:1px solid var(--border);overflow:hidden;">'
+          + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+          + '<thead><tr style="background:var(--bg3);">'
+          + '<th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">#</th>'
+          + '<th style="padding:6px 10px;text-align:left;">Khach hang</th>'
+          + '<th style="padding:6px 10px;text-align:right;">Doanh so</th>'
+          + '</tr></thead><tbody>';
+        sorted.slice(0,10).forEach(function(r,i){
+          var medal = i===0?'&#x1F947;':i===1?'&#x1F948;':i===2?'&#x1F949;':'';
+          html += '<tr style="border-top:1px solid var(--border);">'
+            + '<td style="padding:6px 10px;color:var(--text3);">' + medal + (medal?'':'#'+(i+1)) + '</td>'
+            + '<td style="padding:6px 10px;font-weight:700;">' + _esc(r.ten_kh||r.ten||'') + '</td>'
+            + '<td style="padding:6px 10px;text-align:right;color:var(--green);">' + _fmt(r.tong_mua||0) + '</td>'
+            + '</tr>';
+        });
+        html += '</tbody></table></div>';
+        top10El.innerHTML = html;
+      }
+
+      // Phân bổ nhóm
+      var nhomEl = document.getElementById('crm-bc-nhom');
+      if (nhomEl) {
+        var nhomMap = {};
+        var nhomLabels = { le:'Khach le', si:'Khach si', vip:'VIP', dai_ly:'Dai ly', noi_bo:'Noi bo' };
+        rows.forEach(function(r){ var n=r.nhom||'le'; nhomMap[n]=(nhomMap[n]||0)+1; });
+        var total = rows.length || 1;
+        var colors = { le:'var(--text3)', si:'var(--cyan)', vip:'var(--yellow)', dai_ly:'var(--green)', noi_bo:'var(--accent2)' };
+        nhomEl.innerHTML = Object.keys(nhomLabels).map(function(k){
+          var cnt = nhomMap[k]||0;
+          var pct = Math.round(cnt/total*100);
+          var c   = colors[k]||'var(--text3)';
+          return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
+            + '<div style="width:70px;font-size:11px;color:var(--text3);">' + nhomLabels[k] + '</div>'
+            + '<div style="flex:1;background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">'
+            + '<div style="width:' + pct + '%;background:' + c + ';height:100%;border-radius:4px;"></div>'
+            + '</div>'
+            + '<div style="width:40px;text-align:right;font-size:11px;font-weight:700;color:' + c + ';">' + cnt + '</div>'
+            + '</div>';
+        }).join('');
+      }
+
+      // Công nợ top
+      var noEl = document.getElementById('crm-bc-no');
+      if (noEl) {
+        var hasDebt = rows.filter(function(r){ return Number(r.no_cuoi||0)>0; })
+          .sort(function(a,b){ return Number(b.no_cuoi||0)-Number(a.no_cuoi||0); });
+        if (!hasDebt.length) {
+          noEl.innerHTML = '<div style="font-size:13px;font-weight:900;margin-bottom:12px;color:var(--red);">&#x1F4B3; Cong no khach hang</div><div style="text-align:center;padding:20px;color:var(--green);">&#x2705; Khong co no ton</div>';
+        } else {
+          var noHtml = '<div style="font-size:13px;font-weight:900;margin-bottom:12px;color:var(--red);">&#x1F4B3; Cong no khach hang (' + hasDebt.length + ')</div>'
+            + '<div style="border-radius:8px;border:1px solid var(--border);overflow:hidden;">'
+            + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+            + '<thead><tr style="background:var(--bg3);">'
+            + '<th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Khach hang</th>'
+            + '<th style="padding:6px 10px;text-align:right;color:var(--red);">No con lai</th>'
+            + '</tr></thead><tbody>';
+          hasDebt.slice(0,8).forEach(function(r){
+            noHtml += '<tr style="border-top:1px solid var(--border);">'
+              + '<td style="padding:6px 10px;font-weight:700;">' + _esc(r.ten_kh||r.ten||'') + '</td>'
+              + '<td style="padding:6px 10px;text-align:right;color:var(--red);font-weight:700;">' + _fmt(r.no_cuoi||0) + 'd</td>'
+              + '</tr>';
+          });
+          noHtml += '</tbody></table></div>';
+          noEl.innerHTML = noHtml;
+        }
+      }
+
+      // Tier breakdown
+      var tierEl = document.getElementById('crm-bc-tier');
+      if (tierEl) {
+        var tiers = { diamond:0, gold:0, silver:0, bronze:0, member:0 };
+        var tierMin = { diamond:100000000, gold:50000000, silver:20000000, bronze:5000000, member:0 };
+        var tierCfg = {
+          diamond:{ name:'Diamond', icon:'&#x1F48E;', color:'#a78bfa' },
+          gold:   { name:'Gold',    icon:'&#x1F947;', color:'#f59e0b' },
+          silver: { name:'Silver',  icon:'&#x1F948;', color:'#94a3b8' },
+          bronze: { name:'Bronze',  icon:'&#x1F949;', color:'#c97d4e' },
+          member: { name:'Member',  icon:'&#x1F464;', color:'#6b7a99' }
+        };
+        rows.forEach(function(r){
+          var t=Number(r.tong_mua||0);
+          var tier='member';
+          if(t>=100000000)tier='diamond';
+          else if(t>=50000000)tier='gold';
+          else if(t>=20000000)tier='silver';
+          else if(t>=5000000)tier='bronze';
+          tiers[tier]++;
+        });
+        var tierHtml = '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x1F451; Phan bo hang Loyalty</div>'
+          + '<div style="display:grid;gap:8px;">';
+        Object.keys(tierCfg).forEach(function(k){
+          var tc = tierCfg[k];
+          var cnt = tiers[k]||0;
+          var pct = Math.round(cnt/(rows.length||1)*100);
+          tierHtml += '<div style="display:flex;align-items:center;gap:8px;">'
+            + '<div style="font-size:14px;">' + tc.icon + '</div>'
+            + '<div style="width:60px;font-size:11px;color:' + tc.color + ';font-weight:700;">' + tc.name + '</div>'
+            + '<div style="flex:1;background:var(--bg3);border-radius:4px;height:8px;overflow:hidden;">'
+            + '<div style="width:' + pct + '%;background:' + tc.color + ';height:100%;border-radius:4px;"></div>'
+            + '</div>'
+            + '<div style="width:40px;text-align:right;font-size:11px;font-weight:700;color:' + tc.color + ';">' + cnt + '</div>'
+            + '</div>';
+        });
+        tierHtml += '</div>';
+        tierEl.innerHTML = tierHtml;
+      }
+    });
+  };
+
+  window.loadCRMContract = function () {
+    if (typeof window.loadHopDong === 'function') window.loadHopDong();
+    else loadCRM();
+  };
 
   // ── KPI ─────────────────────────────────────────────────────────
   function _loadKPI() {

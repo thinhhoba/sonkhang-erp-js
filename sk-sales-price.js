@@ -35,7 +35,10 @@
     ct.innerHTML = _buildShell();
     _switchSection('products');
   }
+  // loadBangGia = Bảng giá (tab 0: danh sách SP + giá) — dùng từ sk-sales-price.js
+  // loadBangGiaSP = alias rõ nghĩa hơn
   window.loadBangGia   = loadBangGia;
+  window.loadBangGiaSP = loadBangGia;
   window.loadSalesCRM  = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('customers'); };
   window.loadKhachHang = window.loadSalesCRM;
   window.loadChietKhau = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('discounts'); };

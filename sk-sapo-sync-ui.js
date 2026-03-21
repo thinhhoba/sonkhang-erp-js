@@ -23,7 +23,7 @@
       + '<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F504; Sapo Realtime Sync</h1>'
       + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Dong bo tu dong · Thong bao don moi · Trigger GAS</p></div>'
       + '<div style="display:flex;gap:8px;">'
-      + '<button id="ss-manual-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25B6; Sync ngay</button>'
+      + '<button id="ss-notify-btn" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);color:var(--yellow);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F514; Bat thong bao</button>'      + '<button id="ss-manual-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25B6; Sync ngay</button>'
       + '<button id="ss-reset-btn" style="background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);color:var(--red);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Reset</button>'
       + '</div></div>'
 
@@ -52,6 +52,27 @@
       + '</div>';
 
     // Bind buttons
+    var notifyBtn = document.getElementById('ss-notify-btn');
+    if (notifyBtn) {
+      notifyBtn.addEventListener('click', function() {
+        _requestNotifyPermission(function(granted) {
+          if (granted) {
+            notifyBtn.style.color = 'var(--green)';
+            notifyBtn.innerHTML = '&#x1F514; Thong bao bat';
+            _toast('Da bat thong bao trinh duyet!','ok');
+            _pushBrowserNotification('SonKhang ERP','Thong bao don hang Sapo se hien thi o day',null);
+          } else {
+            notifyBtn.style.color = 'var(--red)';
+            _toast('Trinh duyet tu choi thong bao. Vui long cho phep trong Settings.','error');
+          }
+        });
+      });
+      // Cap nhat trang thai ban dau
+      if ('Notification' in window && Notification.permission === 'granted') {
+        notifyBtn.style.color = 'var(--green)';
+        notifyBtn.innerHTML = '&#x1F514; Thong bao bat';
+      }
+    }
     document.getElementById('ss-manual-btn').addEventListener('click', _manualSync);
     // Product sync buttons
     var spBtn = document.getElementById('ss-sync-prod-btn');
@@ -158,6 +179,41 @@
     });
     html += '</tbody></table></div>';
     el.innerHTML = html;
+  }
+
+  // ── Browser Push Notification ───────────────────────────────────
+  // Web Notification API (khong can server, chay tu browser)
+  // Request permission mot lan → hien thong bao native khi co don moi
+
+  function _requestNotifyPermission(cb) {
+    if (!('Notification' in window)) { if(cb) cb(false); return; }
+    if (Notification.permission === 'granted')   { if(cb) cb(true);  return; }
+    if (Notification.permission === 'denied')    { if(cb) cb(false); return; }
+    Notification.requestPermission(function(perm) {
+      if(cb) cb(perm === 'granted');
+    });
+  }
+
+  function _pushBrowserNotification(title, body, onClick) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      var n = new Notification(title, {
+        body : body,
+        icon : 'https://erp.sonkhang.vn/favicon.ico',
+        tag  : 'sapo-new-order',  // tag giong nhau → thay the thong bao cu
+        requireInteraction: false
+      });
+      n.onclick = function() {
+        window.focus();
+        if (typeof onClick === 'function') onClick();
+        n.close();
+      };
+      // Tu dong dong sau 8s
+      setTimeout(function(){ try{ n.close(); } catch(e){} }, 8000);
+    } catch(e) {
+      // Fallback: toast
+      _toast(title + ': ' + body, 'ok');
+    }
   }
 
   // ── Polling moi 30s ──────────────────────────────────────────────
@@ -296,6 +352,13 @@
         var newOrders = d.new_orders || [];
         if (newOrders.length > 0) {
           _showNewOrdersNotification(newOrders);
+          // Browser push notification
+          _pushBrowserNotification(
+            'SonKhang ERP - ' + newOrders.length + ' don moi',
+            newOrders.slice(0,3).map(function(o){ return o.code + ' - ' + o.khach; }).join(', ')
+              + (newOrders.length > 3 ? ' (+' + (newOrders.length-3) + ')' : ''),
+            function(){ if(typeof window.skLoad==='function') window.skLoad('don-hang'); }
+          );
         }
       });
     }, 30000);

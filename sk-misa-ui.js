@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.14.1-security] 21/03/2026 — OWASP Security Audit fixes
  * sk-misa-ui.js  SonKhang ERP v5.11.0
  * Module Hoa don VAT — Sapo → ERP → Misa
  * Luong: Upload DM Misa → Mapping → Tao HD nhap 2 che do → Xuat Excel
@@ -226,17 +227,34 @@ function _parseDanhMucFile(file){
       var preview=rows.slice(0,2).map(function(r2){return r2.ma+'|'+r2.ten.substr(0,15);}).join(', ');
       if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Doc duoc '+rows.length+' hang hoa ('+preview+'...). Dang luu...</span>';
 
-      _api()('misa_import_danh_muc',{rows:rows,replace:true},function(e,d){
-        if(!e&&d&&d.ok){
-          _toast(d.msg,'ok');
-          if(sEl) sEl.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+d.msg+'</span>';
+      // [PERF FIX v5.14.1] Chunked upload — max 500 rows/request
+      // Tranh GAS body limit va timeout khi file lon (>30K rows)
+      var CHUNK=500, chunks=[], ci;
+      for(ci=0;ci<rows.length;ci+=CHUNK) chunks.push(rows.slice(ci,ci+CHUNK));
+      var chunkIdx=0,totalSaved=0,totalUpdated=0;
+      function _sendChunk(){
+        if(chunkIdx>=chunks.length){
+          var msg='Da luu '+totalSaved+' moi, '+totalUpdated+' cap nhat';
+          _toast(msg,'ok');
+          if(sEl) sEl.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+msg+'</span>';
           _loadSetupStats();
-        } else {
-          var err=(d&&d.error)||'Loi server';
-          _toast('Loi: '+err,'error');
-          if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+err+'</span>';
+          return;
         }
-      });
+        if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Dang luu lo '+(chunkIdx+1)+'/'+chunks.length+'...</span>';
+        _api()('misa_import_danh_muc',{rows:chunks[chunkIdx],replace:chunkIdx===0},function(e,d){
+          if(e||!d||!d.ok){
+            var err=(d&&d.error)||'Loi lo '+(chunkIdx+1);
+            _toast(err,'error');
+            if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+err+'</span>';
+            return;
+          }
+          totalSaved  +=(d.saved||0);
+          totalUpdated+=(d.updated||0);
+          chunkIdx++;
+          setTimeout(_sendChunk,200);
+        });
+      }
+      _sendChunk();
     }catch(parseErr){
       var msg='Loi doc file: '+parseErr.message;
       _toast(msg,'error');

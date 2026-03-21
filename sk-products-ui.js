@@ -85,8 +85,8 @@
 
     ct.innerHTML = '<div class="fade-in" style="padding:24px;">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">'
-      + '<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F4E6; Quan ly San pham</h1>'
-      + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Bang gia | Danh muc | Thuong hieu | Bien the | Price Tier</p></div>'
+      + '<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F4E6; San pham & Bang gia</h1>'
+      + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Quan ly san pham · Danh muc · Thuong hieu · Bien the · Price Tier</p></div>'
       + '<button id="prod-new-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ San pham moi</button>'
       + '</div>'
       // KPI row
@@ -137,11 +137,18 @@
       });
     });
   }
-  // Expose loadBangGia - entry point chinh cho module san pham
-  window.loadBangGia   = loadBangGia;
+  // === EXPOSE functions ===
+  // loadBangGia  = full product manager (4 tabs: SP, DanhMuc, ThuongHieu, ThuocTinh)
+  // loadQuanLySP = alias cho full manager (dung cho nav item "San pham")
+  // loadDanhMucSP    = mo thang tab Danh muc
+  // loadThuongHieu   = mo thang tab Thuong hieu
+  // loadThuocTinh    = mo thang tab Thuoc tinh
+  // loadChietKhau/loadTinhGia/loadKhachHang = van dung sk-sales-price.js
 
-  // Dedicated loaders cho tung tab - KHONG dung querySelectorAll (timing race)
-  // Thay vao do set STATE.curTab truoc, loadBangGia se goi _renderTab dung tab
+  window.loadBangGia  = loadBangGia;   // entry point chinh
+  window.loadQuanLySP = loadBangGia;   // alias: "Quan ly san pham" tren nav
+
+  // Dedicated tab loaders - set STATE truoc, tranh timing race
   window.loadDanhMucSP = function () {
     STATE.curTab = 'categories';
     loadBangGia();

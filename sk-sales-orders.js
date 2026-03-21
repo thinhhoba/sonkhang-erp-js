@@ -151,7 +151,8 @@
       search    : (_gv('so-search')||'').toLowerCase(),
       from_date : _gv('so-from') || '',
       to_date   : _gv('so-to')   || '',
-      limit     : 100
+      limit     : 30,
+      page      : STATE && STATE.page || 1
     };
     if (status && status !== 'all') params.status = status;
     apiF('sales_get_orders', params, function(e,d) {

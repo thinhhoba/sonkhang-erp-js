@@ -36,7 +36,10 @@
     _switchSection('products');
   }
   window.loadBangGia   = loadBangGia;
-  window.loadSalesCRM  = loadBangGia;
+  window.loadSalesCRM  = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('customers'); };
+  window.loadKhachHang = window.loadSalesCRM;
+  window.loadChietKhau = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('discounts'); };
+  window.loadTinhGia   = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('calc'); };
 
   var _curSection = 'products';
 

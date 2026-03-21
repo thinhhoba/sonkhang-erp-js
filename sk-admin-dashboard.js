@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.18.2] 22/03/2026 — Bug fixes: reload-btn HTML, month label, chart loader
 // [v5.18.1] 22/03/2026 — Phase 3 complete: filter events, error, loading state
 // [v5.18] 22/03/2026 — Phase 3+4: GAS integration + Chart.js charts
 // [v5.18-p1] 22/03/2026 — Admin Dashboard Phase 1: Layout Shell
@@ -457,7 +458,7 @@ function _buildHTML() {
       + '<div id="adm-chart-revenue-loader" class="adm-chart-placeholder">'
         + '<span style="display:flex;flex-direction:column;align-items:center;gap:8px;">'
           + '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>'
-          + '<span>Đang tải biểu đồ... (Phase 4)</span>'
+          + '<span>Đang tải dữ liệu...</span>'
         + '</span>'
       + '</div>'
     + '</div>'
@@ -623,12 +624,17 @@ function _buildHTML() {
       + '<div class="adm-topbar-right">'
         + '<button class="adm-filter-btn" id="adm-month-filter">'
           + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>'
-          + '<span id="adm-month-label">Tháng này</span>'
+          + '<span id="adm-month-label">Tháng ' + new Date().getMonth()+1 + '</span>'
         + '</button>'
         + '<div class="adm-date-badge">'
           + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>'
           + '<span id="adm-clock">' + _e(_nowStr()) + '</span>'
         + '</div>'
+        + '<button id="adm-reload-btn" title="Tải lại dữ liệu" style="'
+          + 'background:var(--bg3);border:1px solid var(--border2);color:var(--text2);'
+          + 'border-radius:9px;width:32px;height:32px;cursor:pointer;font-size:15px;'
+          + 'display:flex;align-items:center;justify-content:center;'
+          + 'transition:transform .4s,opacity .2s;flex-shrink:0;">&#x21BA;</button>'
       + '</div>'
     + '</div>'
 

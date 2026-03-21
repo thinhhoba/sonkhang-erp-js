@@ -90,9 +90,108 @@
 
     // Load status + start polling
     _loadStatus();
+    _renderModuleStatus();
+    _renderSyncLog();
     _startPolling();
   }
-  window.loadSapoSync = loadSapoSync;
+
+  // ── Full Sync Dashboard ────────────────────────────────────────
+  // Thêm tab "Modules" vào loadSapoSync
+  var _MODULE_INFO = {
+    'customers'       :{ icon:'&#x1F465;', label:'Khach hang',     interval:'5 phut'  },
+    'inventory'       :{ icon:'&#x1F4E6;', label:'Ton kho',        interval:'1 phut'  },
+    'suppliers'       :{ icon:'&#x1F3ED;', label:'Nha cung cap',   interval:'30 phut' },
+    'purchase_orders' :{ icon:'&#x1F4C4;', label:'Don nhap hang',  interval:'10 phut' },
+    'price_rules'     :{ icon:'&#x1F4B9;', label:'Chiet khau KM',  interval:'15 phut' },
+    'ledger_entries'  :{ icon:'&#x1F4B5;', label:'So quy Sapo',    interval:'5 phut'  },
+    'fulfillments'    :{ icon:'&#x1F69A;', label:'Giao hang',      interval:'1 phut'  },
+    'transfers'       :{ icon:'&#x1F4E4;', label:'Chuyen kho',     interval:'10 phut' },
+    'draft_orders'    :{ icon:'&#x1F4DD;', label:'Don hang nhap',  interval:'5 phut'  },
+    'locations'       :{ icon:'&#x1F4CD;', label:'Chi nhanh',      interval:'60 phut' },
+  };
+
+  function _renderModuleStatus() {
+    var el = document.getElementById('ss-module-grid');
+    if (!el) return;
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text3);font-size:11px;">Dang tai...</div>';
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_get_module_status', {}, function(e, d) {
+      if (e||!d||!d.ok) { el.innerHTML='<div style="color:var(--red);padding:12px;">Loi</div>'; return; }
+      var mods = d.modules || {};
+      var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">';
+      Object.keys(mods).forEach(function(key) {
+        var m    = mods[key];
+        var info = _MODULE_INFO[key] || { icon:'&#x1F504;', label:key };
+        var isDue = m.is_due;
+        var c    = isDue ? 'var(--yellow)' : 'var(--green)';
+        html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+          + '<span style="font-size:12px;">' + info.icon + ' <strong>' + info.label + '</strong></span>'
+          + '<span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:rgba(0,0,0,.1);color:'+c+';">'
+          + (isDue ? 'Cho sync' : 'OK') + '</span></div>'
+          + '<div style="font-size:10px;color:var(--text3);">' + m.last_sync_ago + '</div>'
+          + '<div style="font-size:10px;color:var(--text3);">Interval: ' + info.interval + '</div>'
+          + '<button data-sync-module="'+key+'" style="margin-top:6px;width:100%;background:rgba(79,111,255,.1);border:1px solid rgba(79,111,255,.2);border-radius:6px;padding:4px;font-size:10px;font-weight:700;cursor:pointer;color:var(--accent2);font-family:inherit;">Sync ngay</button>'
+          + '</div>';
+      });
+      html += '</div>';
+      el.innerHTML = html;
+
+      el.querySelectorAll('[data-sync-module]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var mod = btn.getAttribute('data-sync-module');
+          btn.disabled = true; btn.textContent = 'Dang sync...';
+          var apiF2 = _api();
+          apiF2('sapo_full_sync_module', { module:mod }, function(e2,d2) {
+            btn.disabled = false;
+            btn.textContent = 'Sync ngay';
+            if (!e2&&d2&&d2.ok) {
+              _toast((d2.msg||'Sync xong: '+mod), 'ok');
+              _renderModuleStatus();
+            } else {
+              _toast((d2&&d2.error)||'Loi sync '+mod, 'error');
+            }
+          });
+        });
+      });
+    });
+  }
+
+  function _renderSyncLog() {
+    var el = document.getElementById('ss-log-body');
+    if (!el) return;
+    el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text3);">Dang tai log...</div>';
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_get_sync_log', { limit:50 }, function(e, d) {
+      if (e||!d||!d.ok) { el.innerHTML=''; return; }
+      var rows = d.data || [];
+      if (!rows.length) { el.innerHTML='<div style="text-align:center;padding:16px;color:var(--text3);">Chua co log</div>'; return; }
+      var html = '<div style="border-radius:8px;border:1px solid var(--border);overflow:hidden;">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+        + '<thead><tr style="background:var(--bg3);">'
+        + '<th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Thoi gian</th>'
+        + '<th style="padding:6px 10px;text-align:left;">Module</th>'
+        + '<th style="padding:6px 10px;text-align:center;">TT</th>'
+        + '<th style="padding:6px 10px;text-align:right;">Ban ghi</th>'
+        + '<th style="padding:6px 10px;text-align:left;">Ghi chu</th>'
+        + '</tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var sc = r.status === 'ok' ? 'var(--green)' : (r.status === 'error' ? 'var(--red)' : 'var(--yellow)');
+        html += '<tr style="border-top:1px solid var(--border);">'
+          + '<td style="padding:5px 10px;color:var(--text3);white-space:nowrap;">' + r.time + '</td>'
+          + '<td style="padding:5px 10px;font-weight:700;">' + r.module + '</td>'
+          + '<td style="padding:5px 10px;text-align:center;"><span style="color:'+sc+';font-weight:800;">' + r.status.toUpperCase() + '</span></td>'
+          + '<td style="padding:5px 10px;text-align:right;">' + r.count + '</td>'
+          + '<td style="padding:5px 10px;color:var(--text3);">' + r.note + '</td>'
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+      el.innerHTML = html;
+    });
+  }
+
+
+    window.loadSapoSync = loadSapoSync;
 
   // ── Product Sync ─────────────────────────────────────────────
   function _syncMeta(route, btnId, label) {

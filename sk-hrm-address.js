@@ -40,7 +40,7 @@
       'V\u0129nh B\u1ea3o','C\u00e1t H\u1ea3i','B\u1ea1ch Long V\u0129'
     ],
     'C\u1ea7n Th\u01a1': [
-      'Ninh Ki\u1ec1u','B\u00ecnh Th\u1ee7y','C\u00e1i R\u0103ng',''\u00d4 M\u00f4n',
+      'Ninh Ki\u1ec1u','B\u00ecnh Th\u1ee7y','C\u00e1i R\u0103ng','\u00d4 M\u00f4n',
       'Th\u1ed1t N\u1ed1t','Vinhlong', 'Phong \u0110i\u1ec1n','C\u1edd \u0110\u1ecf',
       'Th\u1edbi Lai'
     ],
@@ -48,7 +48,7 @@
     'B\u00e0 R\u1ecba \u2013 V\u0169ng T\u00e0u': ['V\u0169ng T\u00e0u','B\u00e0 R\u1ecba','Xu\u00e2n L\u1ed9c','Long \u0110\u1ea5t','Th\u00e0nh ph\u1ed1 \u0110\u00e1 B\u1ea1c','X\u0169 Long H\u01b0\u01a1ng'],
     'B\u1eafc Giang': ['B\u1eafc Giang','S\u01a1n \u0110\u1ed9ng','L\u1ea1ng Giang','L\u1ee5c Ng\u1ea1n','L\u1ee5c Nam','Y\u00ean Th\u1ebf','Hi\u1ec7p H\u00f2a','T\u00e2n Y\u00ean','Vi\u1ec7t Y\u00ean','Y\u00ean D\u0169ng'],
     'B\u1eafc K\u1ea1n': ['B\u1eafc K\u1ea1n','Ba B\u1ec3','B\u1ea1ch Th\u00f4ng','Ch\u1ee3 \u0110\u1ed3n','Ch\u1ee3 M\u1edbi','Na R\u00ec','Ng\u00e2n S\u01a1n','P\u00e1c N\u1eb7m'],
-    'B\u1ea1c Li\u00eau': ['B\u1ea1c Li\u00eau','Ph\u01b0\u1edbc Long','H\u1ed3ng D\u00e2n','Gi\u00e1 Rai','V\u0129nh L\u1ee3i','H\u00f2a B\u00ecnh',''\u0110\u00f4ng H\u1ea3i'],
+    'B\u1ea1c Li\u00eau': ['B\u1ea1c Li\u00eau','Ph\u01b0\u1edbc Long','H\u1ed3ng D\u00e2n','Gi\u00e1 Rai','V\u0129nh L\u1ee3i','H\u00f2a B\u00ecnh','\u0110\u00f4ng H\u1ea3i'],
     'B\u1eafc Ninh': ['B\u1eafc Ninh','T\u1eeb S\u01a1n','Y\u00ean Phong','Ti\u00ean Du','Qu\u1ebf V\u00f5','Gia B\u00ecnh','Thu\u1eadn Th\u00e0nh','L\u01b0\u01a1ng T\u00e0i'],
     'B\u1ebfn Tre': ['B\u1ebfn Tre','Ch\u00e2u Th\u00e0nh','Gi\u1ed3ng Tr\u00f4m','M\u1ecf C\u00e0y Nam','M\u1ecf C\u00e0y B\u1eafc','Th\u1ea1nh Ph\u00fa','Ba Tri','B\u00ecnh \u0110\u1ea1i','Ch\u1ee3 L\u00e1ch'],
     'B\u00ecnh D\u01b0\u01a1ng': ['Th\u1ee7 D\u1ea7u M\u1ed9t','D\u0129 An','Thu\u1eadn An','T\u00e2n Uy\u00ean','B\u1ebfn C\u00e1t','Ph\u00fa Gi\u00e1o','B\u1eafc T\u00e2n Uy\u00ean','D\u1ea7u Ti\u1ebfng'],
@@ -112,7 +112,7 @@
     Object.keys(_ADDR_DATA).sort().forEach(function(p) {
       opts += '<option value="'+_esc(p)+'"'+(curVal===p?' selected':'')+'>'+_esc(p)+'</option>';
     });
-    return '<select id="'+id+'" class="form-input" onchange="'+onchangeCb+'">'+opts+'</select>';
+    return '<select id="'+id+'" class="form-input" data-cb="'+_esc(onchangeCb)+'">'+opts+'</select>';
   };
 
   /* Tạo HTML select Quận/Huyện theo tỉnh */
@@ -138,6 +138,17 @@
   };
 
   /* Format địa chỉ từ tỉnh + quận + số nhà */
+  /* Bind province change event sau khi render */
+  window._addrBindProvince = function(id) {
+    var sel = document.getElementById(id);
+    if (!sel || sel._addrBound) return;
+    sel._addrBound = true;
+    sel.addEventListener('change', function() {
+      var cb = sel.getAttribute('data-cb');
+      if (cb) { try { new Function(cb)(); } catch(ex) {} }
+    });
+  };
+
   window._addrFormat = function(house, district, province) {
     var parts = [house, district, province].filter(function(s){ return s && s.trim(); });
     return parts.join(', ');

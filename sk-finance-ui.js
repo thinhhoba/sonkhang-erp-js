@@ -25,13 +25,60 @@ function _modal(h,w){
 }
 function _cm(){var m=document.getElementById('sk-fin-modal');if(m&&m.parentNode)m.parentNode.removeChild(m);}
 
+
+  // ── Sapo → Finance Sync ──────────────────────────────────────
+  function _syncFromSapo() {
+    var btn = document.getElementById('fin-sapo-sync-btn');
+    if (btn) { btn.disabled=true; btn.innerHTML='&#x23F3; Dang dong bo...'; }
+    var apiF=_api();if(!apiF)return;
+    apiF('fin_sync_from_sapo',{},function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML='&#x1F504; Dong bo Sapo'; }
+      if (e||!d||!d.ok){
+        _toast((d&&d.error)||'Loi dong bo','error');
+        return;
+      }
+      var msg = 'Sync xong! '
+        + 'Phieu thu: ' + (d.created_thu||0)
+        + ' | Cong no moi: ' + (d.created_cono||0)
+        + ' | Cap nhat CN: ' + (d.updated_cono||0);
+      if ((d.errors||[]).length) msg += ' | Loi: '+d.errors.length;
+      _toast(msg, 'ok');
+      // Tinh lai so du
+      var apiF2=_api();
+      if (apiF2) apiF2('fin_rebuild_so_du',{},function(){});
+      // Refresh view
+      setTimeout(function(){ _renderTab(STATE.tab); }, 500);
+    });
+  }
+
+  // ── Sapo sync status badge ────────────────────────────────────
+  function _loadSapoSyncStatus() {
+    var apiF=_api();if(!apiF)return;
+    apiF('fin_get_sapo_sync_status',{},function(e,d){
+      var el=document.getElementById('fin-sapo-status');
+      if (!el||e||!d||!d.ok) return;
+      if (d.last_sync) {
+        var dt=d.last_sync.split('T')[0];
+        el.textContent='Sync cuoi: '+dt+' | Tong: '+_fmt(d.total_synced)+' giao dich';
+        el.style.color='var(--green)';
+      } else {
+        el.textContent='Chua dong bo Sapo';
+        el.style.color='var(--text3)';
+      }
+    });
+  }
+
 function loadTaiChinh(){
   var ct=_ct();if(!ct)return;
   ct.innerHTML='<div class="fade-in" style="padding:24px;">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">'
     +'<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F4B0; Tai chinh</h1>'
-    +'<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">So quy · Cong no KH/NCC · But toan · Bao cao</p></div>'
+    +'<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">So quy · Cong no KH/NCC · But toan · Bao cao</p>'
+      +'<div id="fin-sapo-status" style="font-size:11px;color:var(--text3);margin-top:3px;">Dang tai trang thai sync...</div>'
+      +'</div>'
     +'<button id="fin-phieu-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Phieu thu/chi</button>'
+      +'<button id="fin-sapo-sync-btn" style="background:rgba(0,182,255,.1);border:1px solid rgba(0,182,255,.2);color:var(--cyan);border-radius:10px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Dong bo Sapo</button>'
+      +'<button id="fin-rebuild-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:10px;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Tinh lai so du</button>'
     +'</div>'
     +'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;">'
     +[['dashboard','&#x1F4CA; Tong quan'],['soquy','&#x1F4B5; So quy'],['congno','&#x1F4B3; Cong no'],['buttoan','&#x1F4D2; But toan']].map(function(t,i){
@@ -48,7 +95,17 @@ function loadTaiChinh(){
     });
   });
   document.getElementById('fin-phieu-btn').addEventListener('click',function(){_showPhieuForm();});
+  document.getElementById('fin-sapo-sync-btn').addEventListener('click',_syncFromSapo);
+  document.getElementById('fin-rebuild-btn').addEventListener('click',function(){
+    var apiF=_api();if(!apiF)return;
+    apiF('fin_rebuild_so_du',{},function(e,d){
+      if(!e&&d&&d.ok)_toast(d.msg,'ok');
+      else _toast((d&&d.error)||'Loi','error');
+      _renderTab(STATE.tab);
+    });
+  });
   _renderTab('dashboard');
+  _loadSapoSyncStatus();
 }
 window.loadTaiChinh=loadTaiChinh;
 window.loadKeToán=loadTaiChinh;
@@ -103,6 +160,10 @@ function _renderDash(){
 function _renderSoQuy(){
   var el=document.getElementById('fin-body');if(!el)return;
   el.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">'
+      +'<div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+      +'<span style="font-size:11px;color:var(--text3);">Cong no KH/NCC. Nhan "Dong bo Sapo" de cap nhat tu don hang Sapo.</span>'
+      +'<button id="cn-sapo-sync" style="background:rgba(0,182,255,.1);border:1px solid rgba(0,182,255,.2);color:var(--cyan);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Sync Sapo</button>'
+      +'</div>'
     +'<select id="sq-loai" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:12px;">'
     +'<option value="">Tat ca</option><option value="thu">Thu</option><option value="chi">Chi</option>'
     +'</select>'
@@ -159,6 +220,10 @@ function _loadSoQuy(){
 function _renderCongNo(){
   var el=document.getElementById('fin-body');if(!el)return;
   el.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">'
+      +'<div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+      +'<span style="font-size:11px;color:var(--text3);">Cong no KH/NCC. Nhan "Dong bo Sapo" de cap nhat tu don hang Sapo.</span>'
+      +'<button id="cn-sapo-sync" style="background:rgba(0,182,255,.1);border:1px solid rgba(0,182,255,.2);color:var(--cyan);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Sync Sapo</button>'
+      +'</div>'
     +'<select id="cn-loai" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:12px;">'
     +'<option value="">Tat ca</option><option value="kh">Cong no KH</option><option value="ncc">Cong no NCC</option>'
     +'</select>'
@@ -168,6 +233,16 @@ function _renderCongNo(){
   document.getElementById('cn-btn').addEventListener('click',_loadCongNo);
   document.getElementById('cn-add-btn').addEventListener('click',function(){_showCongNoForm(null);});
   _loadCongNo();
+  var cnSapoBtn=document.getElementById('cn-sapo-sync');
+  if(cnSapoBtn) cnSapoBtn.addEventListener('click',function(){
+    cnSapoBtn.disabled=true;cnSapoBtn.textContent='Dang sync...';
+    var apiF2=_api();if(!apiF2)return;
+    apiF2('fin_sync_from_sapo',{},function(e,d){
+      cnSapoBtn.disabled=false;cnSapoBtn.innerHTML='&#x1F504; Sync Sapo';
+      if(!e&&d&&d.ok){_toast('Dong bo xong: '+d.msg,'ok');_loadCongNo();}
+      else _toast((d&&d.error)||'Loi','error');
+    });
+  });
 }
 
 function _loadCongNo(){
@@ -207,6 +282,11 @@ function _loadCongNo(){
     rows.forEach(function(r){
       var td=document.getElementById('cn-act-'+r.ma);if(!td)return;
       if(Number(r.con_no||0)>0){
+        var thuBtn2=document.createElement('button');
+        thuBtn2.innerHTML='&#x1F4B5;';thuBtn2.title='Thu tien + Cap nhat Sapo';
+        thuBtn2.style.cssText='background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;color:var(--green);margin-right:3px;';
+        thuBtn2.addEventListener('click',function(){ _showThanhToanFormWithSapo(r); });
+        td.appendChild(thuBtn2);
         var btn=document.createElement('button');
         btn.innerHTML='&#x1F4B5; TT';btn.title='Thanh toan';
         btn.style.cssText='background:rgba(0,214,143,.1);border:1px solid rgba(0,214,143,.2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;color:var(--green);';
@@ -216,6 +296,55 @@ function _loadCongNo(){
     });
   });
 }
+
+function _showThanhToanFormWithSapo(cn){
+    // Kiểm tra có phải công nợ từ Sapo không
+    var isSapo = cn.ma && cn.ma.indexOf('CN-SAPO-') === 0;
+    var sapoId = isSapo ? cn.ma.replace('CN-SAPO-','') : '';
+    var h='<div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:14px;font-weight:900;">Thu tien + Dong bo Sapo</div>'
+      +'<div style="padding:20px;">'
+      +'<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;">'
+      +'<div style="font-weight:700;margin-bottom:4px;">'+_esc(cn.ten_doi_tuong||'')+'</div>'
+      +'<div style="color:var(--red);">Con no: <strong>'+_fmt(cn.con_no||0)+'d</strong></div>'
+      +(isSapo?'<div style="color:var(--cyan);font-size:11px;margin-top:4px;">&#x1F504; Se cap nhat trang thai Sapo sau khi thu</div>':'')
+      +'</div>'
+      +'<label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);margin-bottom:5px;">So tien</label>'
+      +'<input id="tts-so" type="number" value="'+(cn.con_no||0)+'" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;margin-bottom:12px;">'
+      +'<label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;color:var(--text3);margin-bottom:5px;">Phuong thuc TT</label>'
+      +'<select id="tts-pt" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;">'
+      +'<option value="cash">Tien mat</option>'
+      +'<option value="bank_transfer">Chuyen khoan</option>'
+      +'<option value="momo">MoMo</option>'
+      +'<option value="cod">COD</option>'
+      +'</select>'
+      +'</div>'
+      +'<div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid var(--border);">'
+      +'<button id="tts-cancel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Huy</button>'
+      +'<button id="tts-save" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Xac nhan thu'+(isSapo?' + Sync Sapo':'')+'</button>'
+      +'</div>';
+    _modal(h,'480px');
+    document.getElementById('tts-cancel').addEventListener('click',_cm);
+    document.getElementById('tts-save').addEventListener('click',function(){
+      var so=Number(document.getElementById('tts-so').value||0);
+      var pt=document.getElementById('tts-pt').value;
+      if(!so){_toast('Nhap so tien','error');return;}
+      var btn=document.getElementById('tts-save');btn.disabled=true;btn.textContent='Dang xu ly...';
+      var apiF=_api();
+      // 1. Thu tiền trong ERP
+      apiF('fin_thanh_toan_cong_no',{ma:cn.ma,so_tien:so},function(e,d){
+        if(e||!d||!d.ok){btn.disabled=false;btn.textContent='Xac nhan';_toast((d&&d.error)||'Loi','error');return;}
+        _toast('Da thu '+_fmt(so)+'d','ok');
+        // 2. Nếu là Sapo order → cập nhật Sapo
+        if (isSapo && sapoId) {
+          apiF('fin_mark_paid_in_sapo',{sapo_id:sapoId,so_tien:so,pt_tt:pt},function(e2,d2){
+            if(!e2&&d2&&d2.ok) _toast('Da cap nhat Sapo: '+sapoId,'ok');
+            else _toast('Thu ERP OK nhung Sapo update that bai: '+((d2&&d2.error)||''),'error');
+          });
+        }
+        _cm();_loadCongNo();
+      });
+    });
+  }
 
 function _showThanhToanForm(cn){
   var h='<div style="padding:16px 20px;border-bottom:1px solid var(--border);font-size:14px;font-weight:900;">Thanh toan cong no</div>'

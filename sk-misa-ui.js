@@ -889,7 +889,7 @@ function _renderMisaPanel(){
         +'</td>'
         // SL
         +'<td style="padding:3px 4px;">'
-          +'<input class="ml-sl" data-i="'+realIdx+'" type="number" min="0.01" step="1" value="'+line.sl+'"'
+          +'<input class="ml-sl" data-i="'+realIdx+'" type="number" min="1" step="1" value="'+Math.round(line.sl)+'"'
             +' style="width:50px;background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:3px 5px;font-size:11px;text-align:right;color:var(--text);font-family:inherit;">'
         +'</td>'
         // Gia
@@ -899,7 +899,7 @@ function _renderMisaPanel(){
           +(line.nguon==='auto'&&line.gia_goc?'<div style="font-size:8px;color:var(--text3);text-align:right;">'+_fmt(minG)+'-'+_fmt(maxG)+'</div>':'')
         +'</td>'
         // VAT
-        +'<td style="padding:4px 6px;text-align:center;color:var(--yellow);font-size:11px;">'+line.vat+'%</td>'
+        +'<td style="padding:3px 4px;text-align:center;">'+'<select class="ml-vat" data-i="'+realIdx+'" style="width:58px;background:var(--bg3);border:1px solid rgba(251,191,36,.4);border-radius:5px;padding:3px 5px;font-size:11px;color:var(--yellow);font-weight:700;font-family:inherit;cursor:pointer;">'+[0,5,8,10].map(function(v){return '<option value="'+v+'"'+(v===line.vat?' selected':'')+'>'+v+'%</option>';}).join('')+'</select></td>'
         // TT
         +'<td style="padding:4px 6px;text-align:right;font-weight:700;" id="ml-tt-'+realIdx+'">'+_fmt(tt)+'</td>'
         // Del
@@ -909,11 +909,11 @@ function _renderMisaPanel(){
     +'</tbody></table>';
 
   // Wire inputs
-  el.querySelectorAll('.ml-sl,.ml-gia').forEach(function(inp){
+  el.querySelectorAll('.ml-sl,.ml-gia,.ml-vat').forEach(function(inp){
     inp.addEventListener('input',function(){
       var idx=Number(this.getAttribute('data-i'));
       var line=DS.lines[idx]; if(!line)return;
-      if(this.classList.contains('ml-sl')) line.sl=parseFloat(this.value)||0;
+      if(this.classList.contains('ml-sl')) line.sl=Math.max(1,Math.round(parseFloat(this.value)||1));
       else {
         var v=parseFloat(this.value)||0;
         var minG=Number(this.getAttribute('data-min')||0);
@@ -922,9 +922,15 @@ function _renderMisaPanel(){
                                (line.nguon==='auto'?C.purple[1]:'var(--border2)');
         line.gia=v;
       }
-      var tt=Math.round(line.sl*line.gia);
-      var ttEl=document.getElementById('ml-tt-'+idx);
-      if(ttEl) ttEl.textContent=_fmt(tt);
+      if(this.classList.contains('ml-vat')){
+        line.vat=parseInt(this.value)||10;
+      }
+      var tt   = Math.round(line.sl*line.gia);
+      var thue = Math.round(tt * line.vat / 100);
+      var ttEl   = document.getElementById('ml-tt-'+idx);
+      var thueEl = document.getElementById('ml-thue-'+idx);
+      if(ttEl)   ttEl.textContent  = _fmt(tt);
+      if(thueEl) thueEl.textContent= _fmt(thue);
       _renderBalanceBar();
     });
   });

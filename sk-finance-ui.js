@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.19] 22/03/2026 — So cai TK 111/131/331: finGetSoCai, tab UI, CSV export
  * sk-finance-ui.js  SonKhang ERP v5.7.0
  * Tai chinh: So quy · Cong no · Ke toan · Bao cao TC
  * 0 non-ASCII, DOM API
@@ -81,7 +82,7 @@ function loadTaiChinh(){
       +'<button id="fin-rebuild-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:10px;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Tinh lai so du</button>'
     +'</div>'
     +'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;">'
-    +[['dashboard','&#x1F4CA; Tong quan'],['soquy','&#x1F4B5; So quy'],['congno','&#x1F4B3; Cong no'],['buttoan','&#x1F4D2; But toan']].map(function(t,i){
+    +[['dashboard','&#x1F4CA; Tong quan'],['soquy','&#x1F4B5; So quy'],['congno','&#x1F4B3; Cong no'],['buttoan','&#x1F4D2; But toan'],['socai','&#x1F4D6; So cai TK']].map(function(t,i){
       return '<button data-fin-tab="'+t[0]+'" style="border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;'+(i===0?'background:rgba(79,111,255,.15);border:1px solid rgba(79,111,255,.3);color:var(--accent2);':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);')+'">'+t[1]+'</button>';
     }).join('')
     +'</div>'
@@ -119,6 +120,7 @@ function _renderTab(tab){
   else if(tab==='soquy') _renderSoQuy();
   else if(tab==='congno') _renderCongNo();
   else if(tab==='buttoan') _renderButToan();
+  else if(tab==='socai') _renderSoCai();
 }
 
 // Dashboard TC
@@ -476,4 +478,222 @@ function _showPhieuForm(){
 }
 
 function _fld2(id,l,t,v){return '<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:5px;">'+l+'</label><input id="'+id+'" type="'+t+'" value="'+_esc(String(v||''))+'" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;"></div>';}
+
+// ── [v5.19] Sổ cái TK 111/131/331 ───────────────────────────────
+// [SECURITY] Server text qua _esc trước innerHTML
+// [O(1)]     TK_MAP lookup
+// ─────────────────────────────────────────────────────────────────
+
+var _FIN_TK_MAP = {
+  '111':'Tiền mặt',
+  '112':'Tiền gửi NH',
+  '131':'Phải thu KH',
+  '331':'Phải trả NCC',
+  '511':'Doanh thu',
+  '641':'Chi phí BH',
+  '642':'Chi phí QL',
+  '156':'Hàng hóa',
+};
+
+var _scState = { tk:'111', from:'', to:'', page:1, data:null };
+
+function _esc(s){ return String(s||'')
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;'); }
+
+function _fmtC(n){ return Number(n||0).toLocaleString('vi-VN'); }
+
+function _renderSoCai(){
+  var el=document.getElementById('fin-body'); if(!el) return;
+
+  // Filter bar
+  var tkOptions = Object.keys(_FIN_TK_MAP).map(function(k){
+    return '<option value="'+k+'"'+(k===_scState.tk?' selected':'')+'>TK '+k+' – '+_FIN_TK_MAP[k]+'</option>';
+  }).join('');
+
+  el.innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;">'
+    +'<select id="sc-tk-sel" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);'
+    +'border-radius:8px;padding:7px 12px;font-size:12px;font-family:inherit;cursor:pointer;">'+tkOptions+'</select>'
+    +'<input id="sc-from" type="date" value="'+_esc(_scState.from)+'"'
+    +' style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);'
+    +'border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;" placeholder="Từ ngày"/>'
+    +'<input id="sc-to" type="date" value="'+_esc(_scState.to)+'"'
+    +' style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);'
+    +'border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;" placeholder="Đến ngày"/>'
+    +'<button id="sc-search-btn" style="background:var(--accent2);border:none;color:#fff;'
+    +'border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">'
+    +'&#x1F50D; Xem sổ cái</button>'
+    +'<button id="sc-export-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);'
+    +'border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">'
+    +'&#x1F4E5; Xuất CSV</button>'
+    +'</div>'
+    +'<div id="sc-result">'
+      +'<div style="text-align:center;padding:40px 16px;color:var(--text3);">'
+        +'<div style="font-size:28px;margin-bottom:8px;">&#x1F4D6;</div>'
+        +'<div style="font-size:12px;font-weight:700;">Chọn tài khoản và nhấn "Xem sổ cái"</div>'
+      +'</div>'
+    +'</div>';
+
+  // Events
+  document.getElementById('sc-search-btn').addEventListener('click', function(){
+    _scState.tk   = document.getElementById('sc-tk-sel').value;
+    _scState.from = document.getElementById('sc-from').value;
+    _scState.to   = document.getElementById('sc-to').value;
+    _scState.page = 1;
+    _loadSoCai();
+  });
+
+  document.getElementById('sc-export-btn').addEventListener('click', function(){
+    if(_scState.data) _scExportCSV(_scState.data);
+    else _toast('Hãy tải sổ cái trước khi xuất','error');
+  });
+
+  // Nếu đã có data → re-render
+  if(_scState.data) _scRenderTable(_scState.data);
+}
+
+function _loadSoCai(){
+  var resultEl = document.getElementById('sc-result'); if(!resultEl) return;
+  resultEl.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text3);">Đang tải...</div>';
+
+  var apiF=_api(); if(!apiF){ resultEl.innerHTML='<p style="color:var(--red);">API chưa sẵn sàng</p>'; return; }
+  apiF('fin_get_so_cai',{
+    tk        : _scState.tk,
+    from_date : _scState.from || undefined,
+    to_date   : _scState.to   || undefined,
+    limit     : 200,
+    page      : _scState.page,
+  }, function(e,d){
+    if(e||!d||!d.ok){
+      resultEl.innerHTML='<div style="color:var(--red);padding:16px;">Lỗi: '+_esc((d&&d.error)||'Không kết nối được GAS')+'</div>';
+      return;
+    }
+    _scState.data = d;
+    _scRenderTable(d);
+  });
+}
+
+function _scRenderTable(d){
+  var resultEl=document.getElementById('sc-result'); if(!resultEl) return;
+
+  var rows  = d.data || [];
+  var noData = rows.length === 0;
+
+  // Header summary
+  var sdColor = d.so_du_cuoi >= 0 ? 'var(--green)' : 'var(--red)';
+  var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">'
+    + _scSummCard('Tổng Nợ',    _fmtC(d.tong_no),   'var(--accent2)')
+    + _scSummCard('Tổng Có',    _fmtC(d.tong_co),   'var(--red)')
+    + _scSummCard('Số dư cuối', _fmtC(d.so_du_cuoi), sdColor)
+    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;flex:1;">'
+      + '<div style="font-size:10px;color:var(--text3);font-weight:700;margin-bottom:4px;">TÀI KHOẢN</div>'
+      + '<div style="font-size:14px;font-weight:900;">TK '+_esc(d.tk)+' — '+_esc(d.ten_tk)+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:2px;">'
+        + d.total + ' bút toán'
+        + (d.so_du_dau ? ' | Số dư đầu kỳ: '+_fmtC(d.so_du_dau) : '')
+      + '</div>'
+    + '</div>'
+    + '</div>';
+
+  if(noData){
+    html += '<div style="text-align:center;padding:32px;color:var(--text3);">'
+      + '<div style="font-size:24px;">&#x1F4ED;</div>'
+      + '<div style="font-size:12px;margin-top:8px;">Không có phát sinh trong kỳ</div>'
+      + '</div>';
+  } else {
+    html += '<div style="overflow-x:auto;">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+      + '<thead><tr style="background:var(--bg3);">'
+      + '<th style="text-align:left;padding:8px 10px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);">Ngày</th>'
+      + '<th style="text-align:left;padding:8px 10px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);">Diễn giải</th>'
+      + '<th style="text-align:left;padding:8px 10px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);">Mã chứng từ</th>'
+      + '<th style="text-align:right;padding:8px 10px;color:var(--accent2);font-weight:700;border-bottom:2px solid var(--border);">Số Nợ</th>'
+      + '<th style="text-align:right;padding:8px 10px;color:var(--red);font-weight:700;border-bottom:2px solid var(--border);">Số Có</th>'
+      + '<th style="text-align:right;padding:8px 10px;color:var(--text2);font-weight:700;border-bottom:2px solid var(--border);">Số dư</th>'
+      + '<th style="text-align:center;padding:8px 10px;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border);">Nguồn</th>'
+      + '</tr></thead><tbody>';
+
+    rows.forEach(function(r, i){
+      var sdClr = r.so_du >= 0 ? 'var(--green)' : 'var(--red)';
+      var rowBg = i%2===0 ? 'var(--bg2)' : 'var(--bg3)';
+      html += '<tr style="background:'+rowBg+';">'
+        + '<td style="padding:7px 10px;white-space:nowrap;color:var(--text3);">'+_esc(r.ngay)+'</td>'
+        + '<td style="padding:7px 10px;color:var(--text);">'+_esc(String(r.dien_giai||'').slice(0,50))+'</td>'
+        + '<td style="padding:7px 10px;font-family:monospace;font-size:10px;color:var(--cyan);">'+_esc(r.ma_ref)+'</td>'
+        + '<td style="padding:7px 10px;text-align:right;font-weight:'+(r.so_no>0?'800':'400')+';color:'+(r.so_no>0?'var(--accent2)':'var(--text3)') + ';">'
+          +(r.so_no>0 ? _fmtC(r.so_no) : '—')+'</td>'
+        + '<td style="padding:7px 10px;text-align:right;font-weight:'+(r.so_co>0?'800':'400')+';color:'+(r.so_co>0?'var(--red)':'var(--text3)')+';">'
+          +(r.so_co>0 ? _fmtC(r.so_co) : '—')+'</td>'
+        + '<td style="padding:7px 10px;text-align:right;font-weight:800;color:'+sdClr+';">'+_fmtC(r.so_du)+'</td>'
+        + '<td style="padding:7px 10px;text-align:center;">'
+          + '<span style="background:'+(r.nguon==='ButToan'?'rgba(79,111,255,.15)':'rgba(0,214,143,.15)')+';'
+          + 'color:'+(r.nguon==='ButToan'?'var(--accent2)':'var(--green)')+';'
+          + 'border-radius:5px;padding:2px 7px;font-size:9px;font-weight:800;">'+_esc(r.nguon)+'</span>'
+        + '</td>'
+        + '</tr>';
+    });
+
+    // Footer tổng
+    html += '<tr style="background:var(--bg4,var(--bg3));font-weight:900;border-top:2px solid var(--border);">'
+      + '<td colspan="3" style="padding:8px 10px;font-size:12px;color:var(--text);">TỔNG CỘNG</td>'
+      + '<td style="padding:8px 10px;text-align:right;color:var(--accent2);">'+_fmtC(d.tong_no)+'</td>'
+      + '<td style="padding:8px 10px;text-align:right;color:var(--red);">'+_fmtC(d.tong_co)+'</td>'
+      + '<td style="padding:8px 10px;text-align:right;color:'+sdColor+';">'+_fmtC(d.so_du_cuoi)+'</td>'
+      + '<td></td></tr>';
+
+    html += '</tbody></table></div>';
+
+    // Phân trang
+    if(d.total > rows.length){
+      html += '<div style="display:flex;justify-content:center;gap:8px;margin-top:12px;">';
+      if(_scState.page > 1){
+        html += '<button onclick="_scPage(-1)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:7px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">‹ Trước</button>';
+      }
+      html += '<span style="font-size:11px;color:var(--text3);padding:5px 10px;">Trang '+_scState.page+' / '+Math.ceil(d.total/d.limit)+'</span>';
+      if(_scState.page * d.limit < d.total){
+        html += '<button onclick="_scPage(1)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:7px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Tiếp ›</button>';
+      }
+      html += '</div>';
+    }
+  }
+
+  resultEl.innerHTML = html;
+}
+
+function _scSummCard(label, val, color){
+  return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;min-width:140px;">'
+    + '<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;margin-bottom:4px;">'+label+'</div>'
+    + '<div style="font-size:16px;font-weight:900;color:'+color+';">'+val+'</div>'
+    + '</div>';
+}
+
+function _scPage(delta){
+  _scState.page = Math.max(1, _scState.page + delta);
+  _loadSoCai();
+}
+
+function _scExportCSV(d){
+  var rows = d.data || [];
+  var lines = [['Ngay','Dien giai','Ma chung tu','So No','So Co','So du','Nguon'].join(',')];
+  rows.forEach(function(r){
+    lines.push([
+      r.ngay, '"'+String(r.dien_giai||'').replace(/"/g,'""')+'"',
+      r.ma_ref, r.so_no, r.so_co, r.so_du, r.nguon
+    ].join(','));
+  });
+  lines.push(['TONG CONG','','',d.tong_no,d.tong_co,d.so_du_cuoi,''].join(','));
+
+  var csv  = '\uFEFF' + lines.join('\r\n'); // BOM for Excel UTF-8
+  var blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href   = url;
+  a.download = 'SoCai_TK'+d.tk+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  _toast('Đã xuất CSV: SoCai_TK'+d.tk,'ok');
+}
+
 })();

@@ -33,7 +33,7 @@
       + '</div>'
 
       // San pham sync section
-      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'      + '<div style="font-size:13px;font-weight:900;">&#x1F4E6; San pham tu Sapo</div>'      + '<div id="ss-prod-status" style="font-size:11px;color:var(--text3);">Chua sync</div>'      + '</div>'      + '<div style="display:flex;gap:8px;">'      + '<button id="ss-sync-prod-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Sync san pham</button>'      + '<button id="ss-sync-prod-all-btn" style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Sync lai toan bo</button>'      + '</div></div>'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'      + '<div style="font-size:13px;font-weight:900;">&#x1F4E6; San pham tu Sapo</div>'      + '<div id="ss-prod-status" style="font-size:11px;color:var(--text3);">Chua sync</div>'      + '</div>'      + '<div style="display:flex;gap:8px;">'      + '<button id="ss-sync-prod-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; San pham</button>'      + '<button id="ss-sync-cat-btn" style="background:rgba(79,111,255,.1);border:1px solid rgba(79,111,255,.2);color:var(--accent2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F333; Danh muc</button>'      + '<button id="ss-sync-brand-btn" style="background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);color:#a78bfa;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F3F7; Thuong hieu</button>'      + '<button id="ss-sync-prod-all-btn" style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Toan bo</button>'      + '</div></div>'
       // Trigger setup
       + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'
       + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x23F1; Auto Trigger</div>'
@@ -77,8 +77,12 @@
     // Product sync buttons
     var spBtn = document.getElementById('ss-sync-prod-btn');
     if (spBtn) spBtn.addEventListener('click', function(){ _syncProducts(false); });
+    var catBtn = document.getElementById('ss-sync-cat-btn');
+    if (catBtn) catBtn.addEventListener('click', function(){ _syncMeta('sapo_sync_categories','ss-sync-cat-btn','&#x1F333; Danh muc'); });
+    var brandBtn = document.getElementById('ss-sync-brand-btn');
+    if (brandBtn) brandBtn.addEventListener('click', function(){ _syncMeta('sapo_sync_brands','ss-sync-brand-btn','&#x1F3F7; Thuong hieu'); });
     var spAllBtn = document.getElementById('ss-sync-prod-all-btn');
-    if (spAllBtn) spAllBtn.addEventListener('click', function(){ _syncProducts(true); });
+    if (spAllBtn) spAllBtn.addEventListener('click', function(){ _syncAll(); });
     document.getElementById('ss-reset-btn').addEventListener('click', _resetSync);
     document.getElementById('ss-start-trigger').addEventListener('click', _startTrigger);
     document.getElementById('ss-stop-trigger').addEventListener('click', _stopTrigger);
@@ -91,6 +95,28 @@
   window.loadSapoSync = loadSapoSync;
 
   // ── Product Sync ─────────────────────────────────────────────
+  function _syncMeta(route, btnId, label) {
+    var btn = document.getElementById(btnId);
+    if (btn) { btn.disabled=true; btn.textContent='Dang sync...'; }
+    var apiF = _api(); if (!apiF) return;
+    apiF(route, {}, function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML=label; }
+      if (e||!d||!d.ok) { _toast((d&&d.error)||'Loi sync','error'); return; }
+      _toast(d.msg||'Sync xong','ok');
+    });
+  }
+
+  function _syncAll() {
+    var btn = document.getElementById('ss-sync-prod-all-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Dang sync...'; }
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_sync_all_extended', {}, function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML='&#x21BA; Toan bo'; }
+      if (e||!d||!d.ok) { _toast((d&&d.error)||'Loi','error'); return; }
+      _toast(d.msg||'Sync xong','ok'); _loadStatus();
+    });
+  }
+
   function _syncProducts(resetAll) {
     var btnId = resetAll ? 'ss-sync-prod-all-btn' : 'ss-sync-prod-btn';
     var btn   = document.getElementById(btnId);

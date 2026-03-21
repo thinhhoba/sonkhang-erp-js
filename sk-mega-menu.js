@@ -24,12 +24,21 @@
       ]
     },
     {
+      id: 'crm', label: 'CRM', icon: '&#x1F465;', color: '#00d68f',
+      items: [
+        { id:'crm-khach-hang', icon:'&#x1F465;', label:'Khach hang',     desc:'Danh sach · lich su mua · nhom KH',   done:true  },
+        { id:'crm-loyalty',    icon:'&#x2B50;',  label:'Loyalty / Hang', desc:'Bronze/Silver/Gold/Diamond · diem TL', done:true  },
+        { id:'crm-rfm',        icon:'&#x1F4CA;', label:'Phan tich RFM',  desc:'Recency · Frequency · Monetary',       done:true  },
+        { id:'crm-hop-dong',   icon:'&#x1F4CB;', label:'Hop dong',       desc:'Mau HD · Workflow · File scan',         done:true  },
+        { id:'crm-bao-cao',    icon:'&#x1F4C8;', label:'Bao cao CRM',    desc:'Top KH · No · Diem · RFM segments',    done:true  }
+      ]
+    },
+    {
       id: 'ban-hang', label: 'Ban hang', icon: '&#x1F6D2;', color: '#4f6fff',
       items: [
         { id:'don-hang',    icon:'&#x1F4CB;', label:'Don hang',      desc:'9 trang thai · tao nhanh · Sapo',    done:true  },
         { id:'chiet-khau',  icon:'&#x1F4B9;', label:'Chiet khau KM', desc:'%, VND · nhom KH · thoi gian',       done:true  },
         { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tinh gia ban',  desc:'Margin · VAT · gia si/le',           done:true  },
-        { id:'khach-hang',  icon:'&#x1F465;', label:'Khach hang CRM',desc:'Lich su · no cuoi · diem tich luy',  done:true  },
         { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hang',     desc:'Lenh giao · tai xe · xe tu dong',    done:true  },
         { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',   desc:'Xuat HD · thue · hach toan kep',     done:true  },
         { id:'tra-hang',    icon:'&#x21A9;',  label:'Tra hang RMA',  desc:'Yeu cau · kiem hang · hoan tien',    done:true  },
@@ -39,17 +48,20 @@
     {
       id: 'mua-hang', label: 'Mua hang', icon: '&#x1F4E6;', color: '#06d6d6',
       items: [
-        { id:'mua-hang', icon:'&#x1F3ED;', label:'Nha cung cap',   desc:'Thong tin · nhom · han muc',         done:false },
-        { id:'mua-hang', icon:'&#x1F4C4;', label:'Don dat hang PO', desc:'Duyet · email NCC',                  done:false },
-        { id:'mua-hang', icon:'&#x1F4E5;', label:'Nhap kho',        desc:'Tu PO · cap nhat ton kho',           done:false }
+        { id:'nha-cung-cap', icon:'&#x1F3ED;', label:'Nha cung cap',    desc:'CRUD · nhom · han muc tin dung',  done:true  },
+        { id:'po-list',      icon:'&#x1F4C4;', label:'Lenh mua (PO)',   desc:'Tao · duyet · theo doi trang thai',done:true  },
+        { id:'nhap-kho',     icon:'&#x1F4E5;', label:'Nhap kho',        desc:'Tu PO · kiem dem · cap nhat ton', done:true  },
+        { id:'bao-cao-mh',   icon:'&#x1F4CA;', label:'Bao cao MH',      desc:'Chi phi · NCC · ton kho nhap',    done:true  }
       ]
     },
     {
       id: 'kho-van', label: 'Kho van', icon: '&#x1F3ED;', color: '#fbbf24',
       items: [
-        { id:'phuong-tien', icon:'&#x1F69B;', label:'Phuong tien',  desc:'Registry · dieu phoi · xang',       done:true  },
-        { id:'kho-hang',    icon:'&#x1F4CA;', label:'Ton kho',       desc:'So luong · lo hang · canh bao',     done:false },
-        { id:'kho-hang',    icon:'&#x1F4E4;', label:'Xuat kho',      desc:'Phieu xuat · tru ton',              done:false }
+        { id:'ton-kho',     icon:'&#x1F4CA;', label:'Ton kho',       desc:'So luong · lo hang · canh bao min', done:true  },
+        { id:'xuat-kho',    icon:'&#x1F4E4;', label:'Xuat kho',      desc:'Phieu xuat · tru ton · LS xuat',    done:true  },
+        { id:'nhap-kho',    icon:'&#x1F4E5;', label:'Nhap kho',      desc:'Tu PO · kiem dem · cap nhat',       done:true  },
+        { id:'phuong-tien', icon:'&#x1F69B;', label:'Phuong tien',   desc:'Registry · dieu phoi · xang',       done:true  },
+        { id:'bao-cao-kv',  icon:'&#x1F4C8;', label:'Bao cao Kho',   desc:'Ton kho · canh bao · bien dong',    done:true  }
       ]
     },
     {
@@ -68,9 +80,11 @@
     {
       id: 'tai-chinh', label: 'Tai chinh', icon: '&#x1F4B0;', color: '#ff4d6d',
       items: [
-        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',  desc:'Xuat HD · hach toan 131/511/3331',  done:true  },
-        { id:'ke-toan',     icon:'&#x1F4D2;', label:'So quy',       desc:'Thu chi · so du dau/cuoi',           done:false },
-        { id:'ke-toan',     icon:'&#x1F517;', label:'Cong no',      desc:'KH · NCC · han thanh toan',          done:false }
+        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',  desc:'Xuat HD · thue · hach toan kep',    done:true  },
+        { id:'so-quy',      icon:'&#x1F4B5;', label:'So quy',       desc:'Thu chi · so du · doi soat',         done:true  },
+        { id:'cong-no',     icon:'&#x1F4B3;', label:'Cong no',      desc:'KH/NCC · han TT · nhac no',          done:true  },
+        { id:'ke-toan',     icon:'&#x1F4D2;', label:'Ke toan TK',   desc:'So cai · but toan · bao cao TC',     done:true  },
+        { id:'bao-cao-tc',  icon:'&#x1F4CA;', label:'Bao cao TC',   desc:'P&L · doanh thu · chi phi',          done:true  }
       ]
     },
     {

@@ -90,11 +90,12 @@
     {
       id: 'quan-tri', label: 'Quan tri', icon: '&#x2699;', color: '#a78bfa',
       items: [
-        { id:'sapo-sync',        icon:'&#x1F504;', label:'Sapo Sync',     desc:'Don hang · san pham · realtime',done:true   },
-        { id:'admin-panel',      icon:'&#x1F511;', label:'Phan quyen',    desc:'Users · roles · RBAC',        admin:true  },
-        { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',  desc:'Lien ket tai khoan · NV',     admin:true  },
-        { id:'account-settings', icon:'&#x1F464;', label:'Cai dat TK',    desc:'Mat khau · thong tin ca nhan',admin:false },
-        { id:'ca-nhan',          icon:'&#x1F4CB;', label:'Ho so ca nhan', desc:'Xem luong · CC · KPI',        admin:false }
+        { id:'sapo-sync',        icon:'&#x1F504;', label:'Sapo Sync',      desc:'Don hang · san pham · realtime sync', done:true  },
+        { id:'admin-panel',      icon:'&#x1F511;', label:'Phan quyen',     desc:'Users · roles · RBAC phan quyen',    admin:true },
+        { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',   desc:'Lien ket tai khoan voi nhan vien',   admin:true },
+        { id:'account-settings', icon:'&#x1F464;', label:'Cai dat TK',     desc:'Mat khau · thong tin ca nhan',       admin:false},
+        { id:'ca-nhan',          icon:'&#x1F4CB;', label:'Ho so ca nhan',  desc:'Xem luong · cham cong · KPI',        admin:false},
+        { id:'bao-cao-ns',       icon:'&#x1F4CA;', label:'Bao cao NS',     desc:'Tong hop · luong · KPI · tuyen dung',admin:true }
       ]
     }
   ];

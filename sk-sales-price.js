@@ -39,6 +39,17 @@
   // loadBangGiaSP = alias rõ nghĩa hơn
   window.loadBangGia   = loadBangGia;
   window.loadBangGiaSP = loadBangGia;
+  // Báo cáo bán hàng - tab trong sk-sales-price.js
+  window.loadBaoCaoBH  = function () {
+    if (typeof window._spSwitch === 'function') {
+      loadBangGia();
+      setTimeout(function () {
+        window._spSwitch('reports');
+      }, 200);
+    } else {
+      loadBangGia();
+    }
+  };
   window.loadSalesCRM  = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('customers'); };
   window.loadKhachHang = window.loadSalesCRM;
   window.loadChietKhau = function () { loadBangGia(); if (typeof window._spSwitch === 'function') window._spSwitch('discounts'); };

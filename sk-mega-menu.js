@@ -1,5 +1,5 @@
 /* ================================================================
- * sk-mega-menu.js — SonKhang ERP v5.0
+ * sk-mega-menu.js — SonKhang ERP v5.4
  * Mega Menu + Quick Search Ctrl+K + Command Palette + Breadcrumb
  * Design System: DataTable, SKChart, Notification, Print
  * 21/03/2026
@@ -125,7 +125,7 @@
     var brand = '<div class="mmn-brand" onclick="skLoad(\'dashboard\')">'
       + '<div class="mmn-logo">SK</div>'
       + '<div class="mmn-brand-text"><span class="mmn-title">SonKhang ERP</span>'
-      + '<span class="mmn-version">v5.0</span></div>'
+      + '<span class="mmn-version">v5.4</span></div>'
       + '</div>';
 
     // Menu items

@@ -17,15 +17,18 @@
     {
       id: 'ban-hang', label: 'Ban hang', icon: '&#x1F6D2;', color: '#4f6fff',
       items: [
-        { id:'don-hang',    icon:'&#x1F4CB;', label:'Don hang',     desc:'Tao don · 9 trang thai · Sapo sync', done:true  },
-        { id:'bang-gia',    icon:'&#x1F4B2;', label:'Bang gia SP',  desc:'San pham · gia le/si/goc · ton kho', done:true  },
-        { id:'chiet-khau',  icon:'&#x1F3F7;', label:'Chiet khau KM',desc:'Giam %, VND · nhom KH · thoi gian',  done:true  },
-        { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tinh gia ban', desc:'Margin · VAT · gia si/le · CK',      done:true  },
-        { id:'khach-hang',  icon:'&#x1F465;', label:'Khach hang CRM',desc:'Thong tin · lich su · no cuoi',     done:true  },
-        { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hang',    desc:'Lenh giao · tai xe · xe tu dong',    done:true  },
-        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',  desc:'Xuat HD · thue · hach toan kep',     done:true  },
-        { id:'tra-hang',    icon:'&#x21A9;',  label:'Tra hang RMA', desc:'Yeu cau · kiem hang · hoan tien',    done:true  },
-        { id:'bao-cao-bh',  icon:'&#x1F4CA;', label:'Bao cao BH',   desc:'Doanh thu · SP ban chay · hoa hong', done:true  }
+        { id:'don-hang',    icon:'&#x1F4CB;', label:'Don hang',      desc:'9 trang thai · tao nhanh · Sapo',   done:true  },
+        { id:'bang-gia',    icon:'&#x1F4B2;', label:'Bang gia SP',   desc:'San pham · anh · ma vach · bien the',done:true  },
+        { id:'danh-muc',    icon:'&#x1F333;', label:'Danh muc',      desc:'Cay phan cap · drag-drop · filter',  done:true  },
+        { id:'thuong-hieu', icon:'&#x1F3F7;', label:'Thuong hieu',   desc:'Brand · logo · quoc gia',            done:true  },
+        { id:'chiet-khau',  icon:'&#x1F4B9;', label:'Chiet khau KM', desc:'%, VND · nhom KH · thoi gian',       done:true  },
+        { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tinh gia ban',  desc:'Margin · VAT · gia si/le',           done:true  },
+        { id:'khach-hang',  icon:'&#x1F465;', label:'Khach hang CRM',desc:'Lich su · no cuoi · diem tich luy',  done:true  },
+        { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hang',     desc:'Lenh giao · tai xe · xe tu dong',    done:true  },
+        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',   desc:'Xuat HD · thue · hach toan kep',     done:true  },
+        { id:'tra-hang',    icon:'&#x21A9;',  label:'Tra hang RMA',  desc:'Yeu cau · kiem hang · hoan tien',    done:true  },
+        { id:'bao-cao-bh',  icon:'&#x1F4CA;', label:'Bao cao BH',    desc:'Doanh thu · SP ban chay · hoa hong', done:true  },
+        { id:'sapo-sync',   icon:'&#x1F504;', label:'Sapo Realtime', desc:'Auto sync · webhook · notification', done:true  }
       ]
     },
     {

@@ -120,409 +120,39 @@
   var _cmdIdx       = 0;
   var _cmdResults   = [];
 
-  // ================================================================
-  // NOTIFICATION SYSTEM v5.13
-  // Polling GAS moi 30s | Browser Notification | Persistent localStorage
-  // ================================================================
 
-  // State
-  var _notifCache   = [];          // cache local
-  var _notifSince   = null;        // ISO timestamp poll cuoi
-  var _notifTimer   = null;        // setInterval handle
-  var _notifPerm    = false;       // Browser Notification permission
-  var _notifPaused  = false;       // tam dung polling (tab an)
-  var POLL_INTERVAL = 30000;       // 30 giay
+  // ── Notification bell data (local mock — sẽ được replace bằng GAS polling sau) ──
+  var _notifications = [
+    { id:1, type:'order',    text:'Don hang moi tu Sapo #SO0231',  time:'2 phut',  read:false },
+    { id:2, type:'leave',    text:'Nguyen Van A xin nghi phep 25/03', time:'15 phut', read:false },
+    { id:3, type:'vehicle',  text:'Xe 51G-12345 da hoan thanh chuyen', time:'1 gio',  read:true  },
+    { id:4, type:'payroll',  text:'Luong thang 3 da duoc duyet',   time:'2 gio',   read:true  },
+  ];
 
-  // Icons + labels theo type
-  var NOTIF_META = {
-    order_new       : { icon:'&#x1F6D2;', color:'var(--green)',  label:'Don hang moi'    },
-    order_paid      : { icon:'&#x1F4B0;', color:'var(--green)',  label:'Thanh toan'       },
-    order_cancel    : { icon:'&#x274C;',  color:'var(--red)',    label:'Huy don'          },
-    leave_request   : { icon:'&#x1F4C5;', color:'var(--yellow)', label:'Nghi phep'        },
-    leave_approved  : { icon:'&#x2705;',  color:'var(--green)',  label:'Duyet nghi'       },
-    expiry_alert    : { icon:'&#x23F0;',  color:'var(--yellow)', label:'Sap het han'      },
-    stock_low       : { icon:'&#x1F4E6;', color:'var(--yellow)', label:'Ton kho thap'     },
-    misa_hd         : { icon:'&#x1F9FE;', color:C.cyan[2],       label:'Hoa don Misa'     },
-    workflow_pending: { icon:'&#x1F4CB;', color:'var(--purple)', label:'Cho duyet'        },
-    kpi_alert       : { icon:'&#x1F4CA;', color:'var(--accent2)',label:'Canh bao KPI'     },
-    debt_due        : { icon:'&#x1F4B3;', color:'var(--red)',    label:'Cong no qua han'  },
-    contract_expire : { icon:'&#x1F4DC;', color:'var(--yellow)', label:'HD sap het han'   },
-    system          : { icon:'&#x2699;',  color:'var(--text3)',  label:'He thong'         },
-  };
-
-  function _notifMeta(type) {
-    return NOTIF_META[type] || { icon:'&#x1F514;', color:'var(--text2)', label:'Thong bao' };
-  }
-
-  function _fmtAgo(iso) {
-    if (!iso) return '';
-    var diff = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-    if (diff < 60)   return diff + 'g truoc';
-    if (diff < 3600) return Math.round(diff/60) + ' phut truoc';
-    if (diff < 86400)return Math.round(diff/3600) + ' gio truoc';
-    return Math.round(diff/86400) + ' ngay truoc';
-  }
-
-  // ── LocalStorage persist ─────────────────────────────────────────
-  var LS_KEY = 'sk_notif_v2';
-  function _loadFromLS() {
-    try {
-      var raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        _notifCache = parsed.items || [];
-        _notifSince = parsed.since || null;
-      }
-    } catch(e) {}
-  }
-  function _saveToLS() {
-    try {
-      // Giu toi da 100 thong bao
-      var items = _notifCache.slice(0, 100);
-      localStorage.setItem(LS_KEY, JSON.stringify({ items:items, since:_notifSince }));
-    } catch(e) {}
-  }
-
-  // ── Poll GAS ──────────────────────────────────────────────────────
-  function _notifPoll() {
-    if (_notifPaused) return;
-    var apiF = typeof window.api === 'function' ? window.api : null;
-    if (!apiF) return;
-    apiF('notif_get', { unread_only:false, limit:50, since:_notifSince }, function(e, d) {
-      if (e || !d || !d.ok) return;
-      var items = d.data || [];
-      _notifSince = d.server_time || new Date().toISOString();
-
-      // Merge: add mới, update status đã đọc
-      var existingIds = {};
-      _notifCache.forEach(function(n) { existingIds[n.id] = true; });
-
-      var newItems = [];
-      items.forEach(function(item) {
-        if (!existingIds[item.id]) {
-          newItems.push(item);
-          _notifCache.unshift(item);
-        } else {
-          // Cập nhật status
-          for (var i=0; i<_notifCache.length; i++) {
-            if (_notifCache[i].id === item.id) {
-              _notifCache[i].status = item.status;
-              break;
-            }
-          }
-        }
-      });
-
-      if (newItems.length > 0) {
-        _saveToLS();
-        _updateBellBadge();
-        _refreshBellPanel();
-        // Browser notification cho urgent/warning
-        newItems.forEach(function(item) {
-          if (item.level === 'urgent' || item.level === 'warning' || item.level === 'success') {
-            _pushBrowserNotif(item);
-          }
-        });
-      } else {
-        _updateBellBadge();
-      }
-    });
-  }
-
-  // ── Start/stop polling ────────────────────────────────────────────
-  function _notifStartPolling() {
-    _loadFromLS();
-    _notifPoll(); // Poll ngay lập tức lần đầu
-    _notifTimer = setInterval(_notifPoll, POLL_INTERVAL);
-
-    // Pause khi tab ẩn, resume khi quay lại
-    document.addEventListener('visibilitychange', function() {
-      _notifPaused = document.hidden;
-      if (!document.hidden) _notifPoll(); // Poll ngay khi quay lại
-    });
-  }
-
-  // ── Browser Push Notification ─────────────────────────────────────
-  function _requestBrowserPerm(cb) {
-    if (!('Notification' in window)) { if(cb) cb(false); return; }
-    if (Notification.permission === 'granted') { _notifPerm=true; if(cb) cb(true); return; }
-    if (Notification.permission === 'denied')  { if(cb) cb(false); return; }
-    Notification.requestPermission(function(p) {
-      _notifPerm = (p === 'granted');
-      if(cb) cb(_notifPerm);
-    });
-  }
-
-  function _pushBrowserNotif(item) {
-    if (!_notifPerm || Notification.permission !== 'granted') return;
-    var meta = _notifMeta(item.type);
-    var n = new Notification('SonKhang ERP — ' + (meta.label||item.type), {
-      body    : item.title + (item.body ? '\n' + item.body : ''),
-      icon    : '/favicon.ico',
-      tag     : item.id,
-      silent  : (item.level === 'info'),
-      requireInteraction: (item.level === 'urgent')
-    });
-    n.onclick = function() {
-      window.focus();
-      if (item.link) _navigateTo(item.link);
-      n.close();
-    };
-    setTimeout(function(){ n.close(); }, 8000);
-  }
-
-  function _navigateTo(link) {
-    if (!link) return;
-    var page = link.replace(/^#/,'');
-    if (typeof window.skLoad === 'function') window.skLoad(page);
-    else if (typeof window.getContent === 'function') window.location.hash = link;
-  }
-
-  // ── Bell Badge ────────────────────────────────────────────────────
-  function _updateBellBadge() {
-    var count = _notifCache.filter(function(n){ return n.status === 'unread'; }).length;
-    var dot   = document.getElementById('mmn-bell-count');
-    if (dot) {
-      dot.textContent = count > 99 ? '99+' : String(count);
-      dot.style.display = count > 0 ? 'flex' : 'none';
-      // Pulse animation khi có mới
-      if (count > 0) {
-        dot.style.animation = 'notif-pulse 1.5s ease-in-out 3';
-      }
-    }
-  }
-
-  // ── Bell Panel ────────────────────────────────────────────────────
+  /* ================================================================
+   * 4. NOTIFICATION BELL
+   * ================================================================ */
   function buildBellPanel() {
-    return '<div id="sk-bell-inner"></div>'; // placeholder, filled by _refreshBellPanel
-  }
-
-  function _refreshBellPanel() {
-    var el = document.getElementById('sk-bell-inner');
-    if (!el) return;
-
-    var items    = _notifCache.filter(function(n){ return n.status !== 'dismissed'; });
-    var unread   = items.filter(function(n){ return n.status === 'unread'; });
-    var hasUrgent= unread.some(function(n){ return n.level === 'urgent'; });
-
-    // Group: Moi (unread) + Da doc
-    var unreadItems = items.filter(function(n){ return n.status === 'unread'; }).slice(0,20);
-    var readItems   = items.filter(function(n){ return n.status === 'read'; }).slice(0,10);
-
-    var h = '<div style="background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">'
-      + '<div style="display:flex;align-items:center;gap:8px;">'
-        + '<span style="font-size:14px;font-weight:900;">Thong bao</span>'
-        + (unread.length ? '<span style="background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:800;padding:2px 7px;">' + unread.length + ' moi</span>' : '')
-        + (hasUrgent ? '<span style="font-size:11px;color:var(--red);font-weight:700;">&#x26A0; Can xu ly!</span>' : '')
-      + '</div>'
-      + '<div style="display:flex;gap:6px;align-items:center;">'
-        + '<button id="bell-perm-btn" title="Bat thong bao trinh duyet" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;">'
-          + (('Notification' in window && Notification.permission === 'granted') ? '&#x1F514; Bat' : '&#x1F515; Tat')
-        + '</button>'
-        + (unread.length ? '<button id="bell-read-all" style="background:none;border:none;color:var(--accent2);font-size:11px;cursor:pointer;font-weight:700;">Doc het</button>' : '')
-      + '</div>'
-    + '</div>'
-
-    // Filter tabs
-    + '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);">'
-      + '<button class="bell-tab active" data-tab="unread" style="flex:1;background:none;border:none;border-bottom:2px solid var(--accent2);color:var(--accent2);font-size:11px;font-weight:700;padding:8px;cursor:pointer;">Chua doc (' + unreadItems.length + ')</button>'
-      + '<button class="bell-tab" data-tab="all" style="flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-size:11px;font-weight:700;padding:8px;cursor:pointer;">Tat ca (' + items.length + ')</button>'
-    + '</div>'
-
-    + '<div id="bell-list" style="max-height:380px;overflow-y:auto;">';
-
-    // Render items
-    function renderItem(item) {
-      var meta  = _notifMeta(item.type);
-      var isNew = item.status === 'unread';
-      var levelBg = item.level === 'urgent' ? 'rgba(255,77,109,.08)' : item.level === 'warning' ? 'rgba(251,191,36,.06)' : 'transparent';
-      return '<div class="bell-item-v2" data-id="' + _esc2(item.id) + '" data-link="' + _esc2(item.link||'') + '" '
-        + 'style="display:flex;gap:10px;padding:11px 16px;cursor:pointer;border-bottom:1px solid var(--border);'
-        + 'background:' + (isNew ? levelBg||'rgba(79,111,255,.05)' : 'transparent') + ';'
-        + 'position:relative;transition:background .15s;">'
-        // Icon circle
-        + '<div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + meta.icon + '</div>'
-        // Content
-        + '<div style="flex:1;min-width:0;">'
-          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">'
-            + '<div style="font-size:12px;font-weight:' + (isNew?'800':'600') + ';color:var(--text);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;" title="' + _esc2(item.title) + '">' + _esc2(item.title) + '</div>'
-            + '<div style="font-size:9px;color:var(--text3);white-space:nowrap;flex-shrink:0;">' + _fmtAgo(item.created_at) + '</div>'
-          + '</div>'
-          + (item.body ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + _esc2(item.body) + '">' + _esc2(item.body) + '</div>' : '')
-          + '<div style="display:flex;gap:6px;margin-top:5px;align-items:center;">'
-            + '<span style="font-size:9px;font-weight:800;color:' + meta.color + ';text-transform:uppercase;">' + meta.label + '</span>'
-            + (item.level === 'urgent' ? '<span style="font-size:9px;background:rgba(255,77,109,.15);color:var(--red);border-radius:3px;padding:1px 5px;font-weight:800;">KHAN CAP</span>' : '')
-            + (item.link ? '<span class="bell-goto" data-link="' + _esc2(item.link) + '" style="font-size:9px;color:var(--accent2);cursor:pointer;text-decoration:underline;">Xem &#x2192;</span>' : '')
-          + '</div>'
+    var unread = _notifications.filter(function(n){ return !n.read; }).length;
+    var html = '<div class="bell-header">'
+      + '<span class="bell-title">Thong bao</span>'
+      + (unread ? '<span class="bell-unread">' + unread + ' moi</span>' : '')
+      + '</div><div class="bell-list">';
+    _notifications.forEach(function(n) {
+      var icons = { order:'&#x1F6D2;', leave:'&#x1F4C5;', vehicle:'&#x1F69B;', payroll:'&#x1F4B5;' };
+      html += '<div class="bell-item' + (n.read ? '' : ' unread') + '" data-id="' + n.id + '">'
+        + '<span class="bell-icon">' + (icons[n.type] || '&#x1F514;') + '</span>'
+        + '<div class="bell-body">'
+        + '<div class="bell-text">' + n.text + '</div>'
+        + '<div class="bell-time">' + n.time + ' truoc</div>'
         + '</div>'
-        // Unread dot
-        + (isNew ? '<div style="width:8px;height:8px;border-radius:50%;background:var(--accent2);flex-shrink:0;margin-top:4px;"></div>' : '')
-        // Dismiss btn
-        + '<button class="bell-dismiss" data-id="' + _esc2(item.id) + '" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;opacity:0;transition:opacity .2s;padding:2px 4px;" title="Xoa">&#x2715;</button>'
+        + (n.read ? '' : '<span class="bell-dot"></span>')
         + '</div>';
-    }
-
-    if (unreadItems.length === 0 && readItems.length === 0) {
-      h += '<div style="text-align:center;padding:40px 20px;">'
-        + '<div style="font-size:32px;margin-bottom:10px;">&#x1F514;</div>'
-        + '<div style="font-size:13px;color:var(--text2);font-weight:700;">Khong co thong bao</div>'
-        + '<div style="font-size:11px;color:var(--text3);margin-top:4px;">He thong se tu dong cap nhat khi co su kien moi</div>'
-        + '</div>';
-    } else {
-      if (unreadItems.length) {
-        h += '<div style="padding:6px 16px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;background:var(--bg3);">Chua doc</div>';
-        unreadItems.forEach(function(item){ h += renderItem(item); });
-      }
-      if (readItems.length) {
-        h += '<div style="padding:6px 16px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;background:var(--bg3);">Da doc</div>';
-        readItems.forEach(function(item){ h += renderItem(item); });
-      }
-    }
-
-    h += '</div>'
-    // Footer
-    + '<div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">'
-      + '<div style="font-size:10px;color:var(--text3);" id="bell-last-sync">Cap nhat: ' + _fmtAgo(_notifSince) + '</div>'
-      + '<button id="bell-clear-read" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;">Xoa da doc</button>'
-    + '</div>';
-
-    el.innerHTML = h;
-    _wireBellPanel();
+    });
+    html += '</div><button class="bell-all" onclick="_skMarkAllRead()">Danh dau tat ca da doc</button>';
+    return html;
   }
 
-  function _wireBellPanel() {
-    // Tabs
-    document.querySelectorAll('.bell-tab').forEach(function(tab) {
-      tab.addEventListener('click', function() {
-        var t = tab.getAttribute('data-tab');
-        document.querySelectorAll('.bell-tab').forEach(function(b) {
-          b.style.borderBottomColor = 'transparent';
-          b.style.color = 'var(--text3)';
-          b.classList.remove('active');
-        });
-        tab.style.borderBottomColor = 'var(--accent2)';
-        tab.style.color = 'var(--accent2)';
-        tab.classList.add('active');
-        var list = document.getElementById('bell-list');
-        if (!list) return;
-        var items = _notifCache.filter(function(n){ return n.status !== 'dismissed'; });
-        if (t === 'unread') items = items.filter(function(n){ return n.status === 'unread'; });
-        list.innerHTML = '';
-        if (!items.length) {
-          list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">Khong co thong bao</div>';
-          return;
-        }
-        var frag = document.createDocumentFragment();
-        items.slice(0,30).forEach(function(item){
-          var tmp = document.createElement('div');
-          var meta = _notifMeta(item.type);
-          var isNew = item.status === 'unread';
-          tmp.innerHTML = '<div class="bell-item-v2" data-id="'+_esc2(item.id)+'" data-link="'+_esc2(item.link||'')+'" '
-            +'style="display:flex;gap:10px;padding:11px 16px;cursor:pointer;border-bottom:1px solid var(--border);background:'+(isNew?'rgba(79,111,255,.05)':'transparent')+';position:relative;">'
-            +'<div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">'+meta.icon+'</div>'
-            +'<div style="flex:1;min-width:0;">'
-              +'<div style="font-size:12px;font-weight:'+(isNew?800:600)+';color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc2(item.title)+'</div>'
-              +(item.body?'<div style="font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc2(item.body)+'</div>':'')
-              +'<div style="font-size:9px;color:var(--text3);margin-top:3px;">'+_fmtAgo(item.created_at)+'</div>'
-            +'</div>'
-            +(isNew?'<div style="width:8px;height:8px;border-radius:50%;background:var(--accent2);flex-shrink:0;margin-top:4px;"></div>':'')
-            +'</div>';
-          frag.appendChild(tmp.firstChild);
-        });
-        list.appendChild(frag);
-        _wireBellItems(list);
-      });
-    });
-
-    // Browser perm
-    var permBtn = document.getElementById('bell-perm-btn');
-    if (permBtn) {
-      permBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _requestBrowserPerm(function(granted) {
-          permBtn.innerHTML = granted ? '&#x1F514; Bat' : '&#x1F515; Tat';
-          if (granted) _showToast('Da bat thong bao trinh duyet!');
-          else _showToast('Trinh duyet tu choi. Vao Settings de cho phep.');
-        });
-      });
-    }
-
-    // Mark all read
-    var readAllBtn = document.getElementById('bell-read-all');
-    if (readAllBtn) {
-      readAllBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var ids = _notifCache.filter(function(n){ return n.status==='unread'; }).map(function(n){ return n.id; });
-        _notifCache.forEach(function(n){ if(n.status==='unread') n.status='read'; });
-        _saveToLS(); _updateBellBadge(); _refreshBellPanel();
-        var apiF = typeof window.api === 'function' ? window.api : null;
-        if (apiF) apiF('notif_mark_read', { ids:ids }, function(){});
-      });
-    }
-
-    // Clear read
-    var clearBtn = document.getElementById('bell-clear-read');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _notifCache = _notifCache.filter(function(n){ return n.status !== 'read'; });
-        _saveToLS(); _refreshBellPanel();
-      });
-    }
-
-    // Wire item list
-    _wireBellItems(document.getElementById('bell-list'));
-  }
-
-  function _wireBellItems(container) {
-    if (!container) return;
-    // Click item → mark read + navigate
-    container.querySelectorAll('.bell-item-v2').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        if (e.target.classList.contains('bell-dismiss') || e.target.classList.contains('bell-goto')) return;
-        var id   = el.getAttribute('data-id');
-        var link = el.getAttribute('data-link');
-        // Mark read
-        for (var i=0; i<_notifCache.length; i++) {
-          if (_notifCache[i].id === id) { _notifCache[i].status = 'read'; break; }
-        }
-        _saveToLS(); _updateBellBadge(); _refreshBellPanel();
-        var apiF = typeof window.api === 'function' ? window.api : null;
-        if (apiF) apiF('notif_mark_read', { ids:[id] }, function(){});
-        if (link) { _navigateTo(link); document.getElementById('mmn-bell-panel') && document.getElementById('mmn-bell-panel').classList.remove('open'); }
-      });
-      // Hover show dismiss
-      el.addEventListener('mouseenter', function() {
-        var d = el.querySelector('.bell-dismiss'); if(d) d.style.opacity='1';
-      });
-      el.addEventListener('mouseleave', function() {
-        var d = el.querySelector('.bell-dismiss'); if(d) d.style.opacity='0';
-      });
-    });
-
-    // Goto links
-    container.querySelectorAll('.bell-goto').forEach(function(el) {
-      el.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _navigateTo(el.getAttribute('data-link'));
-        document.getElementById('mmn-bell-panel') && document.getElementById('mmn-bell-panel').classList.remove('open');
-      });
-    });
-
-    // Dismiss
-    container.querySelectorAll('.bell-dismiss').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        var id = btn.getAttribute('data-id');
-        _notifCache = _notifCache.filter(function(n){ return n.id !== id; });
-        _saveToLS(); _updateBellBadge(); _refreshBellPanel();
-        var apiF = typeof window.api === 'function' ? window.api : null;
-        if (apiF) apiF('notif_dismiss', { id:id }, function(){});
-      });
-    });
-  }
-
-  // ── Bell button events ────────────────────────────────────────────
   function _bindBellEvents() {
     var btn   = document.getElementById('mmn-bell-btn');
     var panel = document.getElementById('mmn-bell-panel');
@@ -530,27 +160,7 @@
 
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      var isOpen = panel.classList.toggle('open');
-      if (isOpen) {
-        _refreshBellPanel();
-        // Mark visible unread as read after 3s
-        setTimeout(function() {
-          var unread = _notifCache.filter(function(n){ return n.status==='unread'; });
-          if (!unread.length) return;
-          // Chỉ auto-read level info
-          var infoIds = unread.filter(function(n){ return n.level==='info'; }).map(function(n){ return n.id; });
-          infoIds.forEach(function(id){
-            for(var i=0; i<_notifCache.length; i++){
-              if(_notifCache[i].id===id) { _notifCache[i].status='read'; break; }
-            }
-          });
-          if (infoIds.length) {
-            _saveToLS(); _updateBellBadge(); _refreshBellPanel();
-            var apiF = typeof window.api === 'function' ? window.api : null;
-            if (apiF) apiF('notif_mark_read', {ids:infoIds}, function(){});
-          }
-        }, 3000);
-      }
+      panel.classList.toggle('open');
     });
     document.addEventListener('click', function(e) {
       if (!e.target.closest('#mmn-bell-btn') && !e.target.closest('#mmn-bell-panel')) {
@@ -558,44 +168,44 @@
       }
     });
 
-    // Start polling
-    _notifStartPolling();
-    // Request permission nếu chưa có
-    if ('Notification' in window && Notification.permission === 'granted') {
-      _notifPerm = true;
+    // Bell items click → mark read
+    panel.querySelectorAll('.bell-item').forEach(function(el) {
+      el.addEventListener('click', function() {
+        var id = parseInt(el.getAttribute('data-id'));
+        var n  = _notifications.find(function(x){ return x.id === id; });
+        if (n) { n.read = true; _refreshBellPanel(); }
+      });
+    });
+  }
+
+  function _updateBellBadge() {
+    var count = _notifications.filter(function(n){ return !n.read; }).length;
+    var dot   = document.getElementById('mmn-bell-count');
+    if (dot) {
+      dot.textContent = count;
+      dot.style.display = count > 0 ? 'flex' : 'none';
     }
   }
 
-  // ── Public API ────────────────────────────────────────────────────
-  // Cho phép module khác push notification
-  window.skNotify = function(text, type, opts) {
-    opts = opts || {};
-    var item = {
-      id         : 'local-' + Date.now(),
-      type       : type || 'system',
-      title      : text,
-      body       : opts.body || '',
-      link       : opts.link || '',
-      level      : opts.level || 'info',
-      status     : 'unread',
-      created_at : new Date().toISOString()
-    };
-    _notifCache.unshift(item);
-    _saveToLS();
-    _updateBellBadge();
+  function _refreshBellPanel() {
     var panel = document.getElementById('mmn-bell-panel');
-    if (panel && panel.classList.contains('open')) _refreshBellPanel();
-    if (item.level === 'urgent' || item.level === 'warning') _pushBrowserNotif(item);
-    _showToast(text, opts.toastType || 'ok');
+    if (!panel) return;
+    panel.innerHTML = buildBellPanel();
+    _bindBellEvents();
+    _updateBellBadge();
+  }
+
+  // API công khai để các module khác push thông báo vào bell
+  window.skNotify = function(text, type) {
+    _notifications.unshift({ id:Date.now(), type:type||'info', text:text, time:'vua xong', read:false });
+    _updateBellBadge();
+    _showToast(text);
   };
 
-  // Force poll ngay lập tức
-  window.skNotifPoll = _notifPoll;
-
-  function _esc2(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-
-
+  window._skMarkAllRead = function() {
+    _notifications.forEach(function(n){ n.read = true; });
+    _refreshBellPanel();
+  };
 
   function _showToast(msg) {
     var t = document.getElementById('sk-toast');

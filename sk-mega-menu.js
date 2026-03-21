@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.14] 21/03/2026 — DevLog System: realtime changelog + masterplan tracking
 // [v5.13.1] 21/03/2026 — Bugfix: restore buildMegaMenu, buildDropdown, _bindMenuEvents,
 //           _bindSearchEvents, openSearch/closeSearch, _renderSearchResults,
 //           updateBreadcrumb, _updateActiveMenu, _closeAllDropdowns
@@ -99,7 +100,8 @@
         { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',   desc:'Lien ket tai khoan voi nhan vien',   admin:true },
         { id:'account-settings', icon:'&#x1F464;', label:'Cai dat TK',     desc:'Mat khau · thong tin ca nhan',       admin:false},
         { id:'ca-nhan',          icon:'&#x1F4CB;', label:'Ho so ca nhan',  desc:'Xem luong · cham cong · KPI',        admin:false},
-        { id:'bao-cao-ns',       icon:'&#x1F4CA;', label:'Bao cao NS',     desc:'Tong hop · luong · KPI · tuyen dung',admin:true }
+        { id:'bao-cao-ns',       icon:'&#x1F4CA;', label:'Bao cao NS',     desc:'Tong hop · luong · KPI · tuyen dung',admin:true },
+        { id:'dev-log',          icon:'&#x1F4D3;', label:'DevLog',         desc:'Changelog · Masterplan · tien do',   admin:true, done:true }
       ]
     }
   ];

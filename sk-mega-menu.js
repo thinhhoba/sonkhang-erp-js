@@ -1,4 +1,8 @@
 /* ================================================================
+// [v5.13.1] 21/03/2026 — Bugfix: restore buildMegaMenu, buildDropdown, _bindMenuEvents,
+//           _bindSearchEvents, openSearch/closeSearch, _renderSearchResults,
+//           updateBreadcrumb, _updateActiveMenu, _closeAllDropdowns
+//           (749L — functions da bi mat trong lan rollback notification v5.13)
  * sk-mega-menu.js — SonKhang ERP v5.4
  * Mega Menu + Quick Search Ctrl+K + Command Palette + Breadcrumb
  * Design System: DataTable, SKChart, Notification, Print
@@ -119,6 +123,273 @@
   var _searchOpen   = false;
   var _cmdIdx       = 0;
   var _cmdResults   = [];
+
+
+  /* ================================================================
+   * 1. BUILD MEGA MENU HTML
+   * ================================================================ */
+  var _breadcrumbMap = {};
+  MENU.forEach(function(g){
+    g.items.forEach(function(it){
+      _breadcrumbMap[it.id] = { label:it.label, group:g.label, groupId:g.id };
+    });
+  });
+
+  function buildDropdown(group) {
+    var html = '<div class="mmd-inner">';
+    group.items.forEach(function(item) {
+      var statusDot = item.done
+        ? '<span class="mmd-status done" title="Hoan thanh">&#x2713;</span>'
+        : '<span class="mmd-status todo" title="Dang phat trien">&#x25CB;</span>';
+      html += '<div class="mmd-item" data-page="' + item.id + '">'
+        + '<div class="mmd-icon">' + (item.icon || '&#x25C6;') + '</div>'
+        + '<div class="mmd-info">'
+        + '<div class="mmd-label">' + item.label + statusDot + '</div>'
+        + '<div class="mmd-desc">' + item.desc + '</div>'
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function buildMegaMenu() {
+    if (document.getElementById('sk-mega-nav')) return;
+
+    var nav = document.createElement('nav');
+    nav.id = 'sk-mega-nav';
+    nav.setAttribute('role', 'navigation');
+
+    var brand = '<div class="mmn-brand" onclick="skLoad(\'dashboard\')">'
+      + '<div class="mmn-logo">SK</div>'
+      + '<div class="mmn-brand-text"><div class="mmn-brand-name">SonKhang ERP</div>'
+      + '<span class="mmn-badge" id="mmn-version-badge">v5.12</span></div>'
+      + '</div>';
+
+    var menuHtml = '<div class="mmn-items">';
+    MENU.forEach(function(group) {
+      menuHtml += '<div class="mmn-group" data-gid="' + group.id + '">'
+        + '<button class="mmn-group-btn" data-gid="' + group.id + '">'
+        + '<span class="mmn-group-icon">' + group.icon + '</span>'
+        + '<span class="mmn-group-label">' + group.label + '</span>'
+        + '<span class="mmn-caret">&#x25BE;</span>'
+        + '</button>'
+        + '<div class="mmn-dropdown" id="mmd-' + group.id + '">' + buildDropdown(group) + '</div>'
+        + '</div>';
+    });
+    menuHtml += '</div>';
+
+    var right = '<div class="mmn-right">'
+      + '<button class="mmn-icon-btn" id="mmn-search-btn" title="Tim kiem (Ctrl+K)">'
+        + '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="5"/><line x1="13" y1="13" x2="18" y2="18"/></svg>'
+      + '</button>'
+      + '<button class="mmn-icon-btn" id="mmn-bell-btn" title="Thong bao">'
+        + '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2a6 6 0 00-6 6v3l-2 2v1h16v-1l-2-2V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/></svg>'
+        + '<span class="mmn-badge-dot" id="mmn-bell-count" style="display:none">0</span>'
+      + '</button>'
+      + '<div class="mmn-bell-panel" id="mmn-bell-panel">' + buildBellPanel() + '</div>'
+      + '<button class="mmn-user-btn" id="mmn-user-btn" onclick="skLoad(\'ca-nhan\')">'
+        + '<div class="mmn-avatar" id="mmn-avatar">?</div>'
+        + '<span class="mmn-username" id="mmn-uname">...</span>'
+      + '</button>'
+      + '</div>';
+
+    nav.innerHTML = brand + menuHtml + right;
+
+    // Breadcrumb bar
+    var bc = document.createElement('div');
+    bc.id = 'sk-breadcrumb';
+    bc.innerHTML = '<span class="bc-item bc-home" onclick="skLoad(\'dashboard\')">&#x1F3E0; Trang chu</span>';
+
+    // Search overlay
+    var so = document.createElement('div');
+    so.id = 'sk-search-overlay';
+    so.innerHTML = '<div class="sk-search-box">'
+      + '<input id="sk-cmd-input" type="text" placeholder="Tim kiem module, chuc nang... (Ctrl+K)">'
+      + '<div id="sk-cmd-results"></div>'
+      + '</div>';
+
+    document.body.insertBefore(nav, document.body.firstChild);
+    document.body.insertBefore(bc, nav.nextSibling);
+    document.body.insertBefore(so, bc.nextSibling);
+
+    _bindMenuEvents();
+    _bindSearchEvents();
+    _bindBellEvents();
+    _updateBellBadge();
+  }
+
+  /* ================================================================
+   * 2. MENU EVENTS
+   * ================================================================ */
+  function _closeAllDropdowns(except) {
+    document.querySelectorAll('.mmn-dropdown').forEach(function(d) {
+      if (d !== except) d.classList.remove('open');
+    });
+    document.querySelectorAll('.mmn-group-btn').forEach(function(b) {
+      if (b.getAttribute('data-gid') !== (except ? except.id.replace('mmd-','') : ''))
+        b.classList.remove('active');
+    });
+  }
+
+  function _bindMenuEvents() {
+    // Group button click → toggle dropdown
+    document.querySelectorAll('.mmn-group-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var gid      = btn.getAttribute('data-gid');
+        var dropdown = document.getElementById('mmd-' + gid);
+        if (!dropdown) return;
+        var isOpen = dropdown.classList.contains('open');
+        _closeAllDropdowns(null);
+        if (!isOpen) {
+          dropdown.classList.add('open');
+          btn.classList.add('active');
+        }
+      });
+    });
+
+    // Dropdown item click → navigate
+    document.querySelectorAll('.mmd-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var page = item.getAttribute('data-page');
+        if (page && typeof skLoad === 'function') {
+          skLoad(page);
+          _closeAllDropdowns(null);
+        }
+      });
+    });
+
+    // Click outside → close dropdowns
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.mmn-group') && !e.target.closest('.mmn-dropdown')) {
+        _closeAllDropdowns(null);
+      }
+    });
+  }
+
+  function _updateActiveMenu(page) {
+    document.querySelectorAll('.mmn-group-btn').forEach(function(b){
+      b.classList.remove('page-active');
+    });
+    if (!page) return;
+    var info = _breadcrumbMap[page];
+    if (!info) return;
+    var btn = document.querySelector('.mmn-group-btn[data-gid="' + info.groupId + '"]');
+    if (btn) btn.classList.add('page-active');
+  }
+
+  function updateBreadcrumb(page) {
+    var bc = document.getElementById('sk-breadcrumb');
+    if (!bc) return;
+    var info = _breadcrumbMap[page];
+    if (!info) {
+      bc.innerHTML = '<span class="bc-item bc-home" onclick="skLoad(\'dashboard\')">&#x1F3E0; Trang chu</span>';
+      return;
+    }
+    bc.innerHTML = '<span class="bc-item bc-home" onclick="skLoad(\'dashboard\')">&#x1F3E0; Trang chu</span>'
+      + '<span class="bc-sep">&#x203A;</span>'
+      + '<span class="bc-item" onclick="skLoad(\'' + info.groupId + '\')">' + info.group + '</span>'
+      + '<span class="bc-sep">&#x203A;</span>'
+      + '<span class="bc-item bc-current">' + info.label + '</span>';
+    _updateActiveMenu(page);
+  }
+
+  /* ================================================================
+   * 3. SEARCH / COMMAND PALETTE (Ctrl+K)
+   * ================================================================ */
+  function openSearch() {
+    _searchOpen = true;
+    var overlay = document.getElementById('sk-search-overlay');
+    var input   = document.getElementById('sk-cmd-input');
+    if (overlay) overlay.classList.add('open');
+    if (input)   { input.value = ''; input.focus(); }
+    _renderSearchResults('');
+  }
+
+  function closeSearch() {
+    _searchOpen = false;
+    var overlay = document.getElementById('sk-search-overlay');
+    if (overlay) overlay.classList.remove('open');
+  }
+
+  function _renderSearchResults(q) {
+    var el = document.getElementById('sk-cmd-results');
+    if (!el) return;
+    q = (q || '').toLowerCase().trim();
+    var results = q
+      ? SEARCH_INDEX.filter(function(item) { return item.keywords.indexOf(q) >= 0; })
+      : SEARCH_INDEX.slice(0, 12);
+    _cmdResults = results;
+    _cmdIdx = 0;
+    if (!results.length) {
+      el.innerHTML = '<div class="sk-cmd-empty">Khong tim thay ket qua cho "' + q + '"</div>';
+      return;
+    }
+    el.innerHTML = results.slice(0,12).map(function(item, i) {
+      return '<div class="sk-cmd-item' + (i === 0 ? ' active' : '') + '" data-idx="' + i + '">'
+        + '<span class="sk-cmd-icon">' + item.icon + '</span>'
+        + '<div class="sk-cmd-info">'
+          + '<div class="sk-cmd-label">' + item.label + '</div>'
+          + '<div class="sk-cmd-group">' + item.group + ' · ' + item.desc + '</div>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+    el.querySelectorAll('.sk-cmd-item').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var idx = parseInt(row.getAttribute('data-idx'));
+        _selectCmd(idx);
+      });
+      row.addEventListener('mouseenter', function() {
+        var idx = parseInt(row.getAttribute('data-idx'));
+        _cmdIdx = idx;
+        _highlightCmd();
+      });
+    });
+  }
+
+  function _moveCmdIdx(dir) {
+    _cmdIdx = Math.max(0, Math.min(_cmdResults.length - 1, _cmdIdx + dir));
+    _highlightCmd();
+  }
+
+  function _highlightCmd() {
+    document.querySelectorAll('.sk-cmd-item').forEach(function(el, i) {
+      el.classList.toggle('active', i === _cmdIdx);
+    });
+    var active = document.querySelector('.sk-cmd-item.active');
+    if (active) active.scrollIntoView({ block:'nearest' });
+  }
+
+  function _selectCmd(idx) {
+    idx = (idx !== undefined) ? idx : _cmdIdx;
+    var item = _cmdResults[idx];
+    if (!item) return;
+    closeSearch();
+    if (typeof skLoad === 'function') skLoad(item.id);
+  }
+
+  function _bindSearchEvents() {
+    var overlay = document.getElementById('sk-search-overlay');
+    var input   = document.getElementById('sk-cmd-input');
+    var btn     = document.getElementById('mmn-search-btn');
+    if (btn)     btn.addEventListener('click', openSearch);
+    if (overlay) overlay.addEventListener('click', function(e){ if (e.target===overlay) closeSearch(); });
+    if (input) {
+      input.addEventListener('input',   function(){ _renderSearchResults(this.value); });
+      input.addEventListener('keydown', function(e){
+        if (e.key === 'ArrowDown') { e.preventDefault(); _moveCmdIdx(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); _moveCmdIdx(-1); }
+        else if (e.key === 'Enter') { e.preventDefault(); _selectCmd(); }
+        else if (e.key === 'Escape') closeSearch();
+      });
+    }
+    document.addEventListener('keydown', function(e){
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+      if (e.key === 'Escape' && _searchOpen) closeSearch();
+    });
+  }
+
 
 
   // ── Notification bell data (local mock — sẽ được replace bằng GAS polling sau) ──

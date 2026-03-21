@@ -65,6 +65,16 @@
   }
   window.loadDonHang = loadDonHang;
 
+  /* Shortcut tabs - goi tu sidebar hoac mega menu */
+  window.loadDonHangTab = function (tab) {
+    if (!document.getElementById('so-root')) {
+      loadDonHang();
+      setTimeout(function () { if (typeof window._soTab === 'function') window._soTab(tab); }, 200);
+    } else {
+      if (typeof window._soTab === 'function') window._soTab(tab);
+    }
+  };
+
   /* ── Shell HTML ───────────────────────────────────────────── */
   function _buildShell() {
     return '<div id="so-root" class="fade-in">'
@@ -160,26 +170,71 @@
 
   function _soRefresh() {
     var apiF = _api(); if (!apiF) return;
-    // Kiem tra config truoc
+
+    // Step 1: Kiem tra config
     apiF('sapo_get_config', {}, function(e,d) {
       if (!e && d && d.ok && !d.configured) {
         _soShowSapoConfig(d);
         return;
       }
-      _toast('Đang đồng bộ Sapo...','ok');
-      apiF('sapo_sync_all', {}, function(e2,d2) {
-        if (e2||!d2||!d2.ok) {
-          if (d2 && d2.steps) {
-            // Chua config
-            _soShowSapoConfigGuide(d2);
-          } else {
-            _toast((d2&&d2.error)||'Lỗi đồng bộ Sapo','error');
-          }
+
+      // Step 2: Test ket noi truoc khi sync
+      _toast('Dang kiem tra ket noi Sapo...','ok');
+      apiF('sapo_test', {}, function(et, dt) {
+        if (et || !dt || !dt.ok) {
+          var errMsg = (dt&&dt.error) || 'Ket noi Sapo that bai';
+          var guide  = (dt&&dt.guide) || 'Kiem tra SAPO_SHOP va SAPO_TOKEN trong sheet CaiDat';
+          _soShowSapoError(errMsg, guide);
           return;
         }
-        _toast('✅ '+d2.msg,'ok');
-        _loadOrders(_curStatus);
-        _loadDashboard();
+
+        // Step 3: Sync
+        _toast('Dang dong bo Sapo (' + ((dt&&dt.shop_name)||'') + ')...','ok');
+        apiF('sapo_sync_all', {}, function(e2,d2) {
+          if (e2||!d2||!d2.ok) {
+            _soShowSapoError((d2&&d2.error)||'Loi dong bo', (d2&&d2.guide)||'');
+            return;
+          }
+          var msg = d2.msg || ('Da dong bo ' + d2.synced + ' don');
+          if (d2.synced === 0) {
+            msg += ' - Shop co the chua co don hang hoac filter qua chat';
+          }
+          _toast(msg + (d2.errors ? ' (' + d2.errors + ' loi)' : ''),'ok');
+          _loadOrders(_curStatus);
+          _loadDashboard();
+        });
+      });
+    });
+  }
+
+  /* Hien loi Sapo voi huong dan */
+  function _soShowSapoError(errMsg, guide) {
+    var ct = _ct(); if (!ct) return;
+    var div = document.createElement('div');
+    div.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9990;max-width:400px;'
+      + 'background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.3);border-radius:14px;'
+      + 'padding:16px 18px;box-shadow:0 8px 32px rgba(0,0,0,.4);';
+    div.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
+      + '<div style="font-size:13px;font-weight:800;color:#ff4d6d;">Loi ket noi Sapo</div>'
+      + '<button id="sapo-err-close" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">x</button>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">' + errMsg + '</div>'
+      + (guide ? '<div style="font-size:11px;color:var(--text3);background:rgba(0,0,0,.2);border-radius:8px;padding:8px;">' + guide + '</div>' : '')
+      + '<button id="sapo-err-debug" style="margin-top:10px;width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:8px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Xem chi tiet ket noi</button>';
+    document.body.appendChild(div);
+
+    document.getElementById('sapo-err-close').addEventListener('click', function(){ div.parentNode.removeChild(div); });
+    document.getElementById('sapo-err-debug').addEventListener('click', function(){
+      var apiF = _api(); if (!apiF) return;
+      this.textContent = 'Dang kiem tra...';
+      var self = this;
+      apiF('sapo_status', {}, function(e,d){
+        self.textContent = 'Xem chi tiet ket noi';
+        if (e||!d) return;
+        var dbg = d.debug || {};
+        var info = ['SAPO DEBUG:', 'Shop: '+dbg.shop, 'URL: '+dbg.base_url, 'Shop test: '+dbg.shop_test, 'Orders count: '+dbg.orders_count, 'First order: '+dbg.first_order_test].join(String.fromCharCode(10));
+        if (dbg.sample_fields) info += String.fromCharCode(10)+'Sample: '+JSON.stringify(dbg.sample_fields);
+        alert(info);
       });
     });
   }

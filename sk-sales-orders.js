@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.22.1] 22/03/2026 — Fix: STATE global → local _soPage
  * sk-sales-orders.js — SonKhang ERP v4.0
  * UI Quan ly Don hang — Tat ca trang thai — Lien ket da phan he
  * 21/03/2026
@@ -143,6 +144,9 @@
   }
   window._soTab = _soTab;
 
+  // [v5.22.1 FIX] Local pagination state — không dùng global STATE
+  var _soPage = 1;
+
   function _loadOrders(status) {
     var el = document.getElementById('so-list'); if (!el) return;
     el.innerHTML = window.salesLoading('Đang tải...');
@@ -152,7 +156,7 @@
       from_date : _gv('so-from') || '',
       to_date   : _gv('so-to')   || '',
       limit     : 30,
-      page      : STATE && STATE.page || 1
+      page      : _soPage,
     };
     if (status && status !== 'all') params.status = status;
     apiF('sales_get_orders', params, function(e,d) {

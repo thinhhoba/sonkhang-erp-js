@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.17] 22/03/2026 — Kho van nang cao: PO nhap kho + xuat kho tu dong
  * sk-warehouse-ui.js  SonKhang ERP v5.7.0
  * Kho van: Ton kho · Xuat kho · Nhap kho · Lich su · Dashboard
  * 0 non-ASCII, DOM API
@@ -39,7 +40,7 @@ function loadKhoVan(){
     +'<button id="wh-sync-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:10px;padding:9px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Sync</button>'
     +'</div></div>'
     +'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:16px;">'
-    +[['dashboard','&#x1F4CA; Dashboard'],['stock','&#x1F4E6; Ton kho'],['history','&#x1F4DC; Lich su']].map(function(t,i){
+    +[['dashboard','&#x1F4CA; Dashboard'],['stock','&#x1F4E6; Ton kho'],['po','&#x1F4CB; Don nhap PO'],['history','&#x1F4DC; Lich su']].map(function(t,i){
       return '<button data-wh-tab="'+t[0]+'" style="border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;'+(i===0?'background:rgba(79,111,255,.15);border:1px solid rgba(79,111,255,.3);color:var(--accent2);':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);')+'">'+t[1]+'</button>';
     }).join('')
     +'</div>'
@@ -74,6 +75,7 @@ window.loadBaoCaoKV=function(){STATE.tab='dashboard';loadKhoVan();};
 function _renderTab(tab){
   if(tab==='dashboard') _renderDash();
   else if(tab==='stock') _renderStock();
+  else if(tab==='po') _renderPOTab();
   else if(tab==='history') _renderHistory();
 }
 
@@ -249,4 +251,132 @@ function _showPhieuForm(loai,sp){
   });
 }
 function _fld(id,l,t,v){return '<div><label style="display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:5px;">'+l+'</label><input id="'+id+'" type="'+t+'" value="'+_esc(String(v||''))+'" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:12px;"></div>';}
+
+// ── [v5.17] PO Tab: Danh sach PO + Nhap kho ─────────────────────
+// [SECURITY] Server text qua _esc() truoc innerHTML
+// [O(n)] Single pass render, O(1) status Map lookup
+// ─────────────────────────────────────────────────────────────────
+var PO_STATUS = {
+  'nhap'    :['Nháp',     '#8892a4'],
+  'cho_duyet':['Chờ duyệt','#fbbd24'],
+  'da_duyet':['Đã duyệt', '#4f6fff'],
+  'da_nhan' :['Đã nhận',  '#00d68f'],
+  'huy'     :['Hủy',      '#ff4d6d'],
+};
+
+function _renderPOTab(){
+  var el = document.getElementById('wh-body'); if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text3);">Dang tai...</div>';
+  var apiF = _api(); if(!apiF){ el.innerHTML='<p style="color:var(--red);">API chua san sang</p>'; return; }
+  apiF('po_get_list', {limit:50}, function(e,d){
+    if(e||!d||!d.ok){ el.innerHTML='<p style="color:var(--red);">Loi: '+(d&&d.error||'unknown')+'</p>'; return; }
+    var rows = d.data || [];
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+      + '<span style="font-size:12px;color:var(--text3);">'+rows.length+' don nhap</span>'
+      + '<button id="po-refresh" style="background:none;border:none;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">↻ Lam moi</button>'
+      + '</div>';
+
+    if(!rows.length){
+      html += '<div style="text-align:center;padding:40px;color:var(--text3);">'
+        + '<div style="font-size:28px;">&#x1F4CB;</div>'
+        + '<div style="margin-top:8px;font-size:12px;">Chua co don nhap nao</div></div>';
+    } else {
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      rows.forEach(function(r){
+        var stCfg = PO_STATUS[r.trang_thai] || ['?','#8892a4'];
+        html += '<div class="wh-po-row" data-po="'+_esc(r.ma_po||r.id||'')+'"'
+          + ' style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;'
+          + 'padding:14px 16px;cursor:pointer;transition:border-color .15s;">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+            + '<div style="flex:1;">'
+              + '<div style="font-size:13px;font-weight:800;color:var(--text);">'+_esc(r.ma_po||r.id||'')+'</div>'
+              + '<div style="font-size:11px;color:var(--text3);margin-top:2px;">NCC: '+_esc(r.ncc_ten||r.ncc_id||'')+'</div>'
+              + '<div style="font-size:10px;color:var(--text3);margin-top:1px;">Ngay: '+_esc(r.ngay||'')+' | Tong: <strong>'+_fmtCur(r.tong_gt||0)+'</strong></div>'
+            + '</div>'
+            + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">'
+              + '<span style="background:'+stCfg[1]+'22;color:'+stCfg[1]+';border-radius:5px;padding:2px 9px;font-size:10px;font-weight:800;">'+stCfg[0]+'</span>'
+              + (r.trang_thai==='da_duyet'
+                ? '<button class="po-nhap-btn" data-po="'+_esc(r.ma_po||r.id||'')+'"'
+                  + ' style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);'
+                  + 'color:var(--green);border-radius:7px;padding:4px 10px;font-size:10px;'
+                  + 'font-weight:800;cursor:pointer;font-family:inherit;">&#x1F4E5; Nhap kho</button>'
+                : '')
+            + '</div>'
+          + '</div>'
+        + '</div>';
+      });
+      html += '</div>';
+    }
+    el.innerHTML = html;
+
+    // Bind: refresh
+    var rfBtn = document.getElementById('po-refresh');
+    if(rfBtn) rfBtn.addEventListener('click', function(){ _renderPOTab(); });
+
+    // Bind: nhap kho buttons
+    el.querySelectorAll('.po-nhap-btn').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var maPO = btn.getAttribute('data-po');
+        if(!confirm('Nhap kho tu PO: '+maPO+' ?\nTon kho se duoc cap nhat ngay.')) return;
+        btn.disabled = true; btn.textContent = 'Dang nhap...';
+        _api()('wh_nhap_kho_from_po', {ma_po:maPO, nguoi:'admin'}, function(e,d){
+          btn.disabled = false;
+          if(!e&&d&&d.ok){
+            _toast('Da nhap kho: '+maPO+' ('+d.count+' SP)', 'ok');
+            _renderPOTab();
+          } else {
+            btn.textContent = '&#x1F4E5; Nhap kho';
+            _toast((d&&d.error)||'Loi nhap kho', 'error');
+          }
+        });
+      });
+    });
+
+    // Bind: click row → xem chi tiet SP trong PO
+    el.querySelectorAll('.wh-po-row').forEach(function(row){
+      row.addEventListener('click', function(e){
+        if(e.target.classList.contains('po-nhap-btn')||e.target.closest('.po-nhap-btn')) return;
+        _showPODetail(row.getAttribute('data-po'));
+      });
+    });
+  });
+}
+
+function _showPODetail(maPO){
+  var apiF = _api(); if(!apiF) return;
+  apiF('po_get_items', {ma_po:maPO}, function(e,d){
+    var items = (!e&&d&&d.ok) ? (d.data||[]) : [];
+    var html = '<div style="font-size:14px;font-weight:900;margin-bottom:16px;">Chi tiet PO: '+_esc(maPO)+'</div>';
+    if(!items.length){
+      html += '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px;">Chua co san pham nao trong PO nay.</div>';
+    } else {
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+        + '<thead><tr style="color:var(--text3);">'
+        + '<th style="text-align:left;padding:5px 8px;font-weight:700;">Ma SP</th>'
+        + '<th style="text-align:left;padding:5px 8px;font-weight:700;">Ten SP</th>'
+        + '<th style="text-align:right;padding:5px 8px;font-weight:700;">SL</th>'
+        + '<th style="text-align:right;padding:5px 8px;font-weight:700;">Don gia</th>'
+        + '<th style="text-align:right;padding:5px 8px;font-weight:700;">Thanh tien</th>'
+        + '</tr></thead><tbody>';
+      items.forEach(function(r){
+        html += '<tr style="border-top:1px solid var(--border);">'
+          + '<td style="padding:6px 8px;color:var(--accent2);font-family:monospace;">'+_esc(r.sp_id)+'</td>'
+          + '<td style="padding:6px 8px;color:var(--text);">'+_esc(r.ten_sp)+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;font-weight:700;">'+r.so_luong+' '+_esc(r.don_vi)+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;">'+_fmtCur(r.don_gia)+'</td>'
+          + '<td style="padding:6px 8px;text-align:right;font-weight:800;color:var(--accent2);">'+_fmtCur(r.thanh_tien)+'</td>'
+          + '</tr>';
+      });
+      html += '</tbody></table>';
+      if(d && d.tong_gt!==undefined){
+        html += '<div style="text-align:right;margin-top:10px;font-size:13px;font-weight:900;color:var(--green);">Tong: '+_fmtCur(d.tong_gt)+'</div>';
+      }
+    }
+    _modal(html);
+  });
+}
+
+function _fmtCur(n){ return Number(n||0).toLocaleString('vi-VN')+'d'; }
+
 })();

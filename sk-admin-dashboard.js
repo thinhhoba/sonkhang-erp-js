@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.18] 22/03/2026 — Phase 3+4: GAS integration + Chart.js charts
 // [v5.18-p1] 22/03/2026 — Admin Dashboard Phase 1: Layout Shell
  * sk-admin-dashboard.js  SonKhang ERP — Admin Dashboard
  * Cong ty TNHH Thuc Pham Son Khang
@@ -675,6 +676,11 @@ function loadAdminDashboard() {
   ct.innerHTML = _buildHTML();
   _startClock();
   _setStaticInfo();
+  // Phase 3+4: start poll after short delay (wait for window.api to be ready)
+  setTimeout(function() {
+    _admFetchAll(_getAdmMonth(), _getAdmYear());
+    _admStartPoll();
+  }, 800);
 
   // Phase 3+4 hooks — no-op placeholders cho bây giờ
   window.admDownloadReport  = function() {
@@ -686,10 +692,345 @@ function loadAdminDashboard() {
   window.admViewActivity    = function() {
     if (typeof window.skToast === 'function') window.skToast('Phase 3: hoạt động GAS realtime sắp có', 'ok');
   };
-  // Public injection hook cho Phase 3
-  window.admInjectData      = function(data) {
-    console.log('[AdminDash] admInjectData called — Phase 3 will populate this', data);
-  };
+  // Phase 3+4 — GAS integration + Charts
+  window.admInjectData = _admInjectData;
+  // Kick off data fetch
+  _admFetchAll(_getAdmMonth(), _getAdmYear());
+}
+
+/* ================================================================
+ * PHASE 3 — GAS DATA INTEGRATION
+ * [SECURITY]  Mọi server text qua _e() (OWASP A03)
+ * [O(1)]      Map-based lookup cho status colors
+ * [ASYNC]     5 GAS calls song song — không block UI
+ * [PERF]      Auto-refresh 5 phút, pause tab ẩn
+ * ================================================================ */
+
+var _admPollTimer = null;
+var _admPollMs    = 5 * 60 * 1000;
+
+function _getAdmMonth() {
+  var el = document.getElementById('adm-month-filter');
+  return el ? Number(el.getAttribute('data-month') || new Date().getMonth()+1)
+            : new Date().getMonth()+1;
+}
+function _getAdmYear() {
+  return new Date().getFullYear();
+}
+
+/* ── Số định dạng ─────────────────────────────────────────────── */
+function _admFmt(n)   { return Number(n||0).toLocaleString('vi-VN'); }
+function _admCur(n) {
+  n = Number(n||0);
+  if (n >= 1e9) return (n/1e9).toFixed(1) + ' tỷ₫';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + ' tr₫';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'k₫';
+  return _admFmt(n) + '₫';
+}
+
+/* ── Fetch tất cả APIs song song ──────────────────────────────── */
+function _admFetchAll(month, year) {
+  var apiF = typeof window.api === 'function' ? window.api : null;
+  if (!apiF) return;
+
+  var done = 0; var R = {};
+  var total = 5;
+
+  function _check(key, d) {
+    R[key] = d;
+    done++;
+    if (done >= total) _admBindAll(R);
+  }
+
+  apiF('sales_get_dashboard',   { month:month, year:year },
+       function(e,d){ _check('sales',   (!e&&d&&d.ok) ? d : null); });
+  apiF('sales_report_revenue',  { period:'day', month:month, year:year },
+       function(e,d){ _check('revenue', (!e&&d&&d.ok) ? d : null); });
+  apiF('wh_get_dashboard',      {},
+       function(e,d){ _check('wh',      (!e&&d&&d.ok) ? d : null); });
+  apiF('hrm_get_kpi_dashboard', { month:month, year:year },
+       function(e,d){ _check('kpi',     (!e&&d&&d.ok) ? d : null); });
+  apiF('notif_get',             { limit:6, unread_only:false },
+       function(e,d){ _check('notif',   (!e&&d&&d.ok) ? d : null); });
+}
+
+/* ── Bind tất cả kết quả vào DOM ─────────────────────────────── */
+function _admBindAll(R) {
+  _admBindCards(R.sales, R.wh, R.kpi);
+  _admBindTable(R.sales, R.kpi, R.wh);
+  _admBindActivity(R.notif);
+  _admBindInfo();
+  _admRenderRevenueChart(R.revenue);
+  _admRenderRiskDonut(R.kpi);
+  _admUpdateSyncTime();
+}
+
+/* ── 4 Summary Cards ─────────────────────────────────────────── */
+function _admBindCards(sales, wh, kpi) {
+  function _set(id, val) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<span style="font-size:inherit;font-weight:inherit;">'
+      + _e(String(val)) + '</span>';
+  }
+  var dt      = sales ? Number((sales.stats||{}).doanh_thu   || 0) : 0;
+  var orders  = sales ? Number((sales.stats||{}).total_orders || 0) : 0;
+  var done    = sales ? Number((sales.stats||{}).so_don_hoan_thanh || 0) : 0;
+  var totlSP  = wh    ? Number(wh.tong_sp || 0) : 0;
+
+  _set('adm-val-doanhthu', _admCur(dt));
+  _set('adm-val-donhang',  _admFmt(orders));
+  _set('adm-val-congviec', _admFmt(done));
+  _set('adm-val-sanpham',  _admFmt(totlSP));
+
+  // Risk score từ KPI avg
+  var kpiAvg  = kpi ? Number((kpi.summary||{}).diem_tb_pct || 70) : 70;
+  var riskVal = Math.round(10 - (kpiAvg / 10));   // 0-10, cao = rủi ro cao
+  riskVal     = Math.max(1, Math.min(10, riskVal));
+  _set('adm-val-risk', String(riskVal));
+  _admRenderRiskDonut(kpi);
+}
+
+/* ── Module Table ────────────────────────────────────────────── */
+function _admBindTable(sales, kpi, wh) {
+  // [O(1)] Map totals theo module index
+  var totals = [
+    sales ? _admCur((sales.stats||{}).doanh_thu  || 0)  : '--',
+    kpi   ? _admFmt((kpi.summary||{}).tong_nv    || 0) + ' NV' : '--',
+    wh    ? _admCur(wh.tong_gia_tri || 0)                : '--',
+    sales ? _admCur((sales.stats||{}).da_thu     || 0)  : '--',
+  ];
+  totals.forEach(function(val, i) {
+    var el = document.getElementById('adm-row-total-' + i);
+    if (el) el.innerHTML = '<span style="color:var(--accent2);font-weight:800;">'
+      + _e(val) + '</span>';
+  });
+}
+
+/* ── Activity Feed từ SK_Notifications ───────────────────────── */
+var _NOTIF_ICON = {
+  order_new       : '🛒', order_paid: '💰', order_cancel: '❌',
+  leave_request   : '📅', leave_approved: '✅',
+  workflow_pending: '⏳', stock_low: '📦',
+  misa_hd         : '📋', system: '⚙️', info: 'ℹ️',
+};
+
+function _admBindActivity(notif) {
+  var el = document.getElementById('adm-activity-list');
+  if (!el) return;
+  var items = notif ? (notif.data || []) : [];
+  if (!items.length) return; // giữ placeholder nếu rỗng
+
+  var colors = ['#ff7043','#43a047','#1976d2','#8e24aa','#00acc1','#f57c00'];
+
+  el.innerHTML = items.slice(0, 6).map(function(n, i) {
+    var icon = _NOTIF_ICON[n.type] || 'ℹ️';
+    var title= _e(String(n.title||'').slice(0, 55));
+    var body = _e(String(n.body ||'').slice(0, 60));
+    var ago  = _notifAgo(n.created_at);
+    var init = icon;
+    var bg   = colors[i % colors.length];
+    return '<div class="adm-activity-item">'
+      + '<div class="adm-av" style="background:' + bg + ';font-size:14px;">' + init + '</div>'
+      + '<div class="adm-activity-body">'
+        + '<div class="adm-activity-name">' + title + '</div>'
+        + (body ? '<div class="adm-activity-msg">' + body + '</div>' : '')
+        + '<div class="adm-activity-time">'
+          + '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M8 4v4l2 2"/></svg>'
+          + _e(ago)
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+}
+
+function _notifAgo(iso) {
+  if (!iso) return '';
+  var diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60)    return diff + 'g trước';
+  if (diff < 3600)  return Math.floor(diff/60) + ' phút trước';
+  if (diff < 86400) return Math.floor(diff/3600) + ' giờ trước';
+  return Math.floor(diff/86400) + ' ngày trước';
+}
+
+/* ── Info card: timestamp ─────────────────────────────────────── */
+function _admBindInfo() {
+  var el = document.getElementById('adm-info-ts');
+  if (el) el.textContent = new Date().toLocaleString('vi-VN');
+}
+
+/* ── Sync time badge ─────────────────────────────────────────── */
+function _admUpdateSyncTime() {
+  var el = document.getElementById('adm-clock');
+  if (!el) return;
+  var d = new Date();
+  var h = d.getHours(), m = d.getMinutes();
+  el.textContent = 'sync: ' + (h<10?'0'+h:h) + ':' + (m<10?'0'+m:m);
+}
+
+/* ── Public inject hook ──────────────────────────────────────── */
+function _admInjectData(data) {
+  if (data) _admBindAll(data);
+  else _admFetchAll(_getAdmMonth(), _getAdmYear());
+}
+
+/* ── Auto-refresh ────────────────────────────────────────────── */
+function _admStartPoll() {
+  if (_admPollTimer) clearInterval(_admPollTimer);
+  _admPollTimer = setInterval(function() {
+    if (document.visibilityState === 'hidden') return;
+    if (!document.getElementById('sk-admin-dash')) {
+      clearInterval(_admPollTimer); _admPollTimer = null; return;
+    }
+    _admFetchAll(_getAdmMonth(), _getAdmYear());
+  }, _admPollMs);
+}
+
+/* ================================================================
+ * PHASE 4 — CHART.JS RENDERING
+ * ================================================================ */
+
+var _admChart = null;
+
+function _admEnsureChartJs(cb) {
+  if (window.Chart) { cb(); return; }
+  var s    = document.createElement('script');
+  s.src    = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+  s.onload = cb;
+  s.onerror= function() { console.warn('[AdminDash] Chart.js load failed'); };
+  document.head.appendChild(s);
+}
+
+/* ── Revenue Line + Bar Chart ─────────────────────────────────── */
+function _admRenderRevenueChart(data) {
+  _admEnsureChartJs(function() {
+    var canvas  = document.getElementById('adm-chart-revenue');
+    var loader  = document.getElementById('adm-chart-revenue-loader');
+    if (!canvas) return;
+
+    // Ẩn placeholder
+    if (loader) loader.style.display = 'none';
+    canvas.style.display = 'block';
+
+    // Parse data — lấy 7 ngày gần nhất
+    var rows = data && data.data ? data.data.slice().sort(function(a,b){
+      return String(a.date||'').localeCompare(String(b.date||''));
+    }).slice(-7) : [];
+
+    var labels  = rows.length ? rows.map(function(r){ return String(r.date||'').slice(5); })
+                               : ['T2','T3','T4','T5','T6','T7','CN'];
+    var dtData  = rows.length ? rows.map(function(r){ return Number(r.doanh_thu||0); })
+                               : [0,0,0,0,0,0,0];
+    var donData = rows.length ? rows.map(function(r){ return Number(r.don||0); })
+                               : [0,0,0,0,0,0,0];
+
+    // Destroy chart cũ nếu có
+    if (_admChart) { try { _admChart.destroy(); } catch(e){} _admChart = null; }
+
+    _admChart = new Chart(canvas, {
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            type            : 'line',
+            label           : 'Doanh thu (₫)',
+            data            : dtData,
+            borderColor     : '#4f6fff',
+            backgroundColor : 'rgba(79,111,255,.12)',
+            borderWidth     : 2.5,
+            fill            : true,
+            tension         : 0.45,
+            pointRadius     : 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#4f6fff',
+            yAxisID         : 'y',
+            order           : 1,
+          },
+          {
+            type            : 'bar',
+            label           : 'Đơn hàng',
+            data            : donData,
+            backgroundColor : 'rgba(0,214,143,.65)',
+            borderRadius    : 4,
+            yAxisID         : 'y2',
+            order           : 2,
+          },
+        ],
+      },
+      options: {
+        responsive          : true,
+        maintainAspectRatio : false,
+        interaction         : { mode:'index', intersect:false },
+        plugins: {
+          legend: {
+            labels: { color:'#8892a4', font:{ size:10, family:'Be Vietnam Pro' }, boxWidth:12 },
+          },
+          tooltip: {
+            backgroundColor : 'rgba(15,17,23,.95)',
+            borderColor     : '#252d40',
+            borderWidth     : 1,
+            titleColor      : '#e8ecf4',
+            bodyColor       : '#b0bcd4',
+            padding         : 10,
+            callbacks: {
+              label: function(ctx) {
+                if (ctx.dataset.yAxisID === 'y') {
+                  return ' ' + Number(ctx.raw).toLocaleString('vi-VN') + '₫';
+                }
+                return ' ' + ctx.raw + ' đơn';
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: { color:'#8892a4', font:{ size:10 } },
+            grid : { color:'rgba(255,255,255,.04)' },
+          },
+          y: {
+            position: 'left',
+            ticks: {
+              color: '#8892a4', font:{ size:10 },
+              callback: function(v) {
+                if (v >= 1e6) return (v/1e6).toFixed(1) + 'M';
+                if (v >= 1e3) return (v/1e3).toFixed(0) + 'k';
+                return v;
+              },
+            },
+            grid: { color:'rgba(255,255,255,.06)' },
+          },
+          y2: {
+            position: 'right',
+            ticks: { color:'#00d68f', font:{ size:10 } },
+            grid : { display:false },
+          },
+        },
+      },
+    });
+  });
+}
+
+/* ── Risk Donut: cập nhật CSS conic-gradient ─────────────────── */
+function _admRenderRiskDonut(kpi) {
+  var el = document.querySelector('#sk-admin-dash .adm-risk-donut');
+  if (!el) return;
+
+  var kpiAvg = kpi ? Number((kpi.summary||{}).diem_tb_pct || 70) : 70;
+  // Chuyển KPI% thành risk score (KPI cao → risk thấp)
+  var safeRatio   = Math.min(1, Math.max(0, kpiAvg / 100));
+  var safeDeg     = Math.round(safeRatio * 360);
+  var riskScore   = Math.round(10 - safeRatio * 9);
+  var color       = safeDeg > 240 ? '#00acc1'
+                  : safeDeg > 120 ? '#fbbd24'
+                  :                 '#ff4d6d';
+
+  el.style.background = 'conic-gradient('
+    + color + ' 0deg ' + safeDeg + 'deg,'
+    + 'var(--border2) ' + safeDeg + 'deg 360deg'
+    + ')';
+
+  var valEl = document.getElementById('adm-val-risk');
+  if (valEl) valEl.style.color = color;
 }
 
 /* ── Export ──────────────────────────────────────────────────── */

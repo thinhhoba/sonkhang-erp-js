@@ -411,78 +411,95 @@ function _renderTonKho(){
 }
 
 function _parseTonKhoFile(file){
-  // Đọc file Excel bằng FileReader → parse với SheetJS
-  _toast('Dang doc file Excel...','ok');
+  _toast('Dang doc file Misa...','ok');
   if(typeof XLSX === 'undefined'){
-    _toast('Chua load thu vien XLSX. Vui long tai lai trang.','error'); return;
+    _toast('Thu vien XLSX chua san sang. Thu lai sau 2 giay.','error'); return;
   }
   var reader = new FileReader();
   reader.onload = function(ev){
     try {
-      var wb = XLSX.read(ev.target.result, {type:'binary'});
-      var ws = wb.Sheets[wb.SheetNames[0]]; // Sheet dau tien
-      var rawData = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      var wb = XLSX.read(ev.target.result, {type:'binary', cellDates:true});
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var raw2D = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
 
-      // Auto-detect header row (tim dong co "Ma hang" hoac "ma hang")
-      var headerRow = -1;
-      for(var i=0;i<Math.min(rawData.length,10);i++){
-        var row = rawData[i];
-        if(row.some(function(c){ return /ma.{0,3}hang/i.test(String(c)); })){
-          headerRow = i; break;
-        }
+      // Detect: file Misa goc (co "TONG HOP TON KHO" dong 0)
+      var isMisaReal = false;
+      var ngayTuFile = '';
+      for(var ti=0;ti<Math.min(raw2D.length,4);ti++){
+        var fc0 = String(raw2D[ti][0]||'');
+        if(/T.NG H.P T.N KHO/i.test(fc0)){ isMisaReal=true; }
+        var mm = fc0.match(/(\d{1,2})\s+th.{1,3}ng\s+(\d{1,2})\s+n.{1,3}m\s+(\d{4})/i)
+              || fc0.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if(mm) ngayTuFile = mm[1]+'/'+mm[2]+'/'+mm[3];
       }
-      if(headerRow < 0) headerRow = 3; // Default: row 4 (Misa format)
 
-      var headers = rawData[headerRow].map(function(h){ return String(h||'').toLowerCase().trim(); });
-      // Map columns
-      function findCol(patterns){
-        for(var pi=0;pi<patterns.length;pi++){
-          var idx = headers.findIndex(function(h){ return h.indexOf(patterns[pi])>=0; });
-          if(idx>=0) return idx;
+      var ngay = ngayTuFile || new Date().toLocaleDateString('vi-VN');
+
+      if(isMisaReal){
+        // FILE MISA GOC: 12 cols, data tu row 5
+        // Col: 0=TenKho, 1=MaHang, 2=TenHang, 3=DVT,
+        //      4=DauSL, 5=DauGT, 6=NhapSL, 7=NhapGT,
+        //      8=XuatSL, 9=XuatGT, 10=CuoiSL, 11=CuoiGT
+        var rows = [];
+        for(var ri=5; ri<raw2D.length; ri++){
+          var r = raw2D[ri];
+          var ma = String(r[1]||'').trim();
+          if(!ma || /^t.{0,5}ng/i.test(ma)) continue;
+          var cuoiSL = parseFloat(String(r[10]||'0').replace(/[^0-9.]/g,''))||0;
+          var cuoiGT = parseFloat(String(r[11]||'0').replace(/[^0-9.]/g,''))||0;
+          rows.push({
+            ma_hang  : ma,
+            ten_hang : String(r[2]||'').trim(),
+            dvt      : String(r[3]||'cai').trim(),
+            ton_dau  : parseFloat(String(r[4]||'0').replace(/[^0-9.]/g,''))||0,
+            nhap_ky  : parseFloat(String(r[6]||'0').replace(/[^0-9.]/g,''))||0,
+            xuat_ky  : parseFloat(String(r[8]||'0').replace(/[^0-9.]/g,''))||0,
+            ton_cuoi : cuoiSL,
+            gia_von  : cuoiSL>0 ? Math.round(cuoiGT/cuoiSL) : 0,
+          });
         }
-        return -1;
-      }
-      var COL = {
-        ma_hang : findCol(['ma hang','ma_hang','mã hàng']),
-        ten_hang: findCol(['ten hang','ten_hang','tên hàng']),
-        dvt     : findCol(['dvt','don vi','đơn vị']),
-        ton_dau : findCol(['ton dau','ton_dau','tồn đầu']),
-        nhap_ky : findCol(['nhap ky','nhap_ky','nhập kỳ']),
-        xuat_ky : findCol(['xuat ky','xuat_ky','xuất kỳ']),
-        ton_cuoi: findCol(['ton cuoi','ton_cuoi','tồn cuối','tồn']),
-        gia_von : findCol(['gia von','gia_von','giá vốn']),
-      };
+        if(!rows.length){ _toast('Khong doc duoc du lieu. Kiem tra file.','error'); return; }
+        var sample = rows.slice(0,2).map(function(x){ return x.ma_hang+'('+x.ton_cuoi+')'; }).join(', ');
+        _toast('Doc duoc '+rows.length+' ma hang, ky '+ngay+'. VD: '+sample,'ok');
+        _api()('misa_import_ton_kho',{data:rows, ngay_bao_cao:ngay, replace:true}, function(e,d){
+          if(!e&&d&&d.ok){ _toast(d.msg,'ok'); _loadTonKho(); }
+          else _toast((d&&d.error)||'Loi luu ton kho','error');
+        });
 
-      if(COL.ma_hang < 0){ _toast('Khong tim thay cot "Ma hang" trong file. Kiem tra dinh dang.','error'); return; }
-
-      var rows = [];
-      for(var ri=headerRow+1; ri<rawData.length; ri++){
-        var r = rawData[ri];
-        var ma = String(r[COL.ma_hang]||'').trim();
-        if(!ma) continue;
-        rows.push({
-          ma_hang  : ma,
-          ten_hang : COL.ten_hang>=0 ? String(r[COL.ten_hang]||'') : '',
-          dvt      : COL.dvt>=0 ? String(r[COL.dvt]||'cai') : 'cai',
-          ton_dau  : COL.ton_dau>=0 ? Number(r[COL.ton_dau]||0) : 0,
-          nhap_ky  : COL.nhap_ky>=0 ? Number(r[COL.nhap_ky]||0) : 0,
-          xuat_ky  : COL.xuat_ky>=0 ? Number(r[COL.xuat_ky]||0) : 0,
-          ton_cuoi : COL.ton_cuoi>=0 ? Number(r[COL.ton_cuoi]||0) : 0,
-          gia_von  : COL.gia_von>=0 ? Number(r[COL.gia_von]||0) : 0,
+      } else {
+        // FILE CUSTOM: auto detect header
+        var hdrRow = 0;
+        for(var hi=0;hi<Math.min(raw2D.length,10);hi++){
+          if(raw2D[hi].some(function(c){ return /ma.{0,4}h.ng/i.test(String(c)); })){ hdrRow=hi; break; }
+        }
+        var hdr = raw2D[hdrRow].map(function(h){ return String(h||'').toLowerCase(); });
+        function fc2(pats){ for(var p=0;p<pats.length;p++) for(var h=0;h<hdr.length;h++) if(hdr[h].indexOf(pats[p])>=0) return h; return -1; }
+        var MA=fc2(['ma hang','ma_hang']), TEN=fc2(['ten hang','ten h']),
+            DVT=fc2(['dvt','don vi']), DAU=fc2(['dau','ton dau']),
+            NHAP=fc2(['nhap','nhập']), XUAT=fc2(['xuat','xuất']),
+            CUOI=fc2(['cuoi','ton cuoi']), GV=fc2(['gia von']);
+        if(MA<0){ _toast('Khong tim duoc cot "Ma hang". Dung file Misa goc.','error'); return; }
+        var rows2=[];
+        for(var ri2=hdrRow+1;ri2<raw2D.length;ri2++){
+          var r2=raw2D[ri2];
+          var ma2=String(r2[MA]||'').trim();
+          if(!ma2||/^t.ng/i.test(ma2)) continue;
+          rows2.push({
+            ma_hang:ma2, ten_hang:TEN>=0?String(r2[TEN]||''):'',
+            dvt:DVT>=0?String(r2[DVT]||'cai'):'cai',
+            ton_dau:DAU>=0?Number(r2[DAU]||0):0, nhap_ky:NHAP>=0?Number(r2[NHAP]||0):0,
+            xuat_ky:XUAT>=0?Number(r2[XUAT]||0):0, ton_cuoi:CUOI>=0?Number(r2[CUOI]||0):0,
+            gia_von:GV>=0?Number(r2[GV]||0):0,
+          });
+        }
+        if(!rows2.length){ _toast('Khong doc duoc dong nao','error'); return; }
+        _toast('Doc '+rows2.length+' dong (custom format). Dang luu...','ok');
+        _api()('misa_import_ton_kho',{data:rows2, ngay_bao_cao:ngay, replace:true}, function(e,d){
+          if(!e&&d&&d.ok){ _toast(d.msg,'ok'); _loadTonKho(); }
+          else _toast((d&&d.error)||'Loi luu','error');
         });
       }
-
-      if(!rows.length){ _toast('Khong doc duoc dong nao hop le','error'); return; }
-
-      _toast('Doc duoc '+rows.length+' dong. Dang luu vao ERP...','ok');
-      var ngay = new Date().toLocaleDateString('vi-VN');
-      _api()('misa_import_ton_kho',{ data:rows, ngay_bao_cao:ngay, replace:true }, function(e,d){
-        if(!e&&d&&d.ok){ _toast(d.msg,'ok'); _loadTonKho(); }
-        else _toast((d&&d.error)||'Loi luu','error');
-      });
-    } catch(err){
-      _toast('Loi doc file: '+err.message,'error');
-    }
+    } catch(parseErr){ _toast('Loi doc file: '+parseErr.message,'error'); }
   };
   reader.readAsBinaryString(file);
 }
@@ -838,8 +855,11 @@ function _loadExportList(){
       +'</tbody></table></div>';
 
     var kyHieu = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0;">'
-      +_inp('ex-kyhieu','Ky hieu hoa don (Misa)','text','AA/23E','VD: AA/23E')
+      +_inp('ex-kyhieu','Ky hieu HD (bat buoc)','text','AA/23E','VD: AA/23E, DD/23E')
+      +_inp('ex-mau_so','Mau so HD','text','01GTKT0/001','01GTKT0/001')
       +_inp('ex-gc','Ghi chu chung','text','','')
+      +_sel('ex-httt','Hinh thuc thanh toan',[['Tien mat','Tien mat'],['Chuyen khoan','Chuyen khoan'],['TM/CK','TM/CK'],['Cong no','Cong no']],'Chuyen khoan')
+      +_sel('ex-hinh-thuc','Hinh thuc ban hang',[['Ban hang hoa dich vu trong nuoc','Ban hang hoa dich vu trong nuoc'],['Ban hang xuat khau','Ban hang xuat khau'],['Ban hang dai ly ban dung gia','Ban hang dai ly ban dung gia']],'Ban hang hoa dich vu trong nuoc')
       +'</div>';
 
     var exportBtn='<button id="ex-export-all" style="width:100%;margin-top:10px;background:linear-gradient(135deg,'+C.yellowT+',var(--green));border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:900;cursor:pointer;color:#1a2340;font-family:inherit;">&#x1F4E4; Xuat Excel Misa (cac hoa don da chon)</button>';

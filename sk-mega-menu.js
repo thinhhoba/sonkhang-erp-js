@@ -15,67 +15,63 @@
   /* ── Menu data — toàn bộ modules ─────────────────────────────── */
   var MENU = [
     {
-      id: 'ban-hang', label: 'Bán hàng', icon: '🛒', color: '#4f6fff',
+      id: 'ban-hang', label: 'Ban hang', icon: '&#x1F6D2;', color: '#4f6fff',
       items: [
-        { id:'don-hang',   icon:'📋', label:'Đơn hàng',     desc:'9 trạng thái · tạo nhanh',   done:true  },
-        { id:'bang-gia',   icon:'💲', label:'Bảng giá',     desc:'Sản phẩm · giá lẻ/sỉ/gốc',  done:true  },
-        { id:'bang-gia',   icon:'🏷️', label:'Chiết khấu KM',desc:'Chương trình giảm giá',      done:true  },
-        { id:'don-hang',   icon:'🚚', label:'Giao hàng',    desc:'Lệnh giao · điều xe',        done:true  },
-        { id:'don-hang',   icon:'🧾', label:'Hóa đơn VAT',  desc:'Xuất HD · hạch toán',        done:true  },
-        { id:'khach-hang', icon:'👥', label:'Khách hàng',   desc:'CRM · loyalty · nhóm KH',    done:true  },
-        { id:'don-hang',   icon:'↩️', label:'Trả hàng',     desc:'RMA · hoàn tiền',            done:false },
-        { id:'bang-gia',   icon:'🧮', label:'Tính giá bán', desc:'Margin · VAT · calculator',  done:true  }
+        { id:'don-hang',    icon:'&#x1F4CB;', label:'Don hang',     desc:'Tao don · 9 trang thai · Sapo sync', done:true  },
+        { id:'bang-gia',    icon:'&#x1F4B2;', label:'Bang gia SP',  desc:'San pham · gia le/si/goc · ton kho', done:true  },
+        { id:'chiet-khau',  icon:'&#x1F3F7;', label:'Chiet khau KM',desc:'Giam %, VND · nhom KH · thoi gian',  done:true  },
+        { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tinh gia ban', desc:'Margin · VAT · gia si/le · CK',      done:true  },
+        { id:'khach-hang',  icon:'&#x1F465;', label:'Khach hang CRM',desc:'Thong tin · lich su · no cuoi',     done:true  },
+        { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hang',    desc:'Lenh giao · tai xe · xe tu dong',    done:true  },
+        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',  desc:'Xuat HD · thue · hach toan kep',     done:true  },
+        { id:'tra-hang',    icon:'&#x21A9;',  label:'Tra hang RMA', desc:'Yeu cau · kiem hang · hoan tien',    done:true  },
+        { id:'bao-cao-bh',  icon:'&#x1F4CA;', label:'Bao cao BH',   desc:'Doanh thu · SP ban chay · hoa hong', done:true  }
       ]
     },
     {
-      id: 'mua-hang', label: 'Mua hàng', icon: '📦', color: '#06d6d6',
+      id: 'mua-hang', label: 'Mua hang', icon: '&#x1F4E6;', color: '#06d6d6',
       items: [
-        { id:'mua-hang',  icon:'🏭', label:'Nhà cung cấp', desc:'Thông tin · nhóm · hạn mức', done:false },
-        { id:'mua-hang',  icon:'💬', label:'Hỏi giá/Báo giá',desc:'So sánh nhiều NCC',        done:false },
-        { id:'mua-hang',  icon:'📄', label:'Đơn đặt hàng', desc:'PO · phê duyệt · email NCC', done:false },
-        { id:'mua-hang',  icon:'📥', label:'Nhập kho',     desc:'Từ PO → cập nhật tồn kho',   done:false },
-        { id:'mua-hang',  icon:'📃', label:'Hợp đồng NCC', desc:'Số HĐ · hạn · nhắc hết hạn', done:false }
+        { id:'mua-hang', icon:'&#x1F3ED;', label:'Nha cung cap',   desc:'Thong tin · nhom · han muc',         done:false },
+        { id:'mua-hang', icon:'&#x1F4C4;', label:'Don dat hang PO', desc:'Duyet · email NCC',                  done:false },
+        { id:'mua-hang', icon:'&#x1F4E5;', label:'Nhap kho',        desc:'Tu PO · cap nhat ton kho',           done:false }
       ]
     },
     {
-      id: 'kho-van', label: 'Kho vận', icon: '🏭', color: '#fbbf24',
+      id: 'kho-van', label: 'Kho van', icon: '&#x1F3ED;', color: '#fbbf24',
       items: [
-        { id:'phuong-tien', icon:'🚛', label:'Phương tiện',  desc:'Registry · điều phối · xăng', done:true  },
-        { id:'kho-hang',    icon:'📊', label:'Tồn kho',      desc:'Số lượng · lô hàng · cảnh báo',done:false},
-        { id:'kho-hang',    icon:'📤', label:'Xuất kho',     desc:'Phiếu xuất · trừ tồn',       done:false },
-        { id:'kho-hang',    icon:'🔄', label:'Chuyển kho',   desc:'Đa kho · đa chi nhánh',      done:false }
+        { id:'phuong-tien', icon:'&#x1F69B;', label:'Phuong tien',  desc:'Registry · dieu phoi · xang',       done:true  },
+        { id:'kho-hang',    icon:'&#x1F4CA;', label:'Ton kho',       desc:'So luong · lo hang · canh bao',     done:false },
+        { id:'kho-hang',    icon:'&#x1F4E4;', label:'Xuat kho',      desc:'Phieu xuat · tru ton',              done:false }
       ]
     },
     {
-      id: 'nhan-su', label: 'Nhân sự', icon: '👔', color: '#00d68f',
+      id: 'nhan-su', label: 'Nhan su', icon: '&#x1F454;', color: '#00d68f',
       items: [
-        { id:'nhan-su',      icon:'👤', label:'Hồ sơ nhân viên', desc:'Thông tin · hợp đồng · tài liệu', done:true  },
-        { id:'cham-cong-v2', icon:'⏰', label:'Chấm công',       desc:'Ca sáng/chiều · OT · nghỉ phép',  done:true  },
-        { id:'bang-luong',   icon:'💵', label:'Bảng lương',      desc:'Tính lương · phụ cấp · phiếu',    done:true  },
-        { id:'kpi',          icon:'🎯', label:'Đánh giá KPI',    desc:'Mục tiêu · kết quả · xu hướng',   done:true  },
-        { id:'tuyen-dung',   icon:'🔍', label:'Tuyển dụng',      desc:'Pipeline Kanban · ứng viên',      done:true  },
-        { id:'portal',       icon:'📢', label:'Cổng nội bộ',     desc:'Thông báo · hỏi đáp',            done:true  },
-        { id:'workflow',     icon:'✅', label:'Quy trình duyệt',  desc:'Đề xuất · phê duyệt',            done:true  }
+        { id:'nhan-su',      icon:'&#x1F464;', label:'Ho so NV',    desc:'Thong tin · hop dong · tai lieu',    done:true  },
+        { id:'cham-cong-v2', icon:'&#x23F0;',  label:'Cham cong',   desc:'Ca sang/chieu · OT · nghi phep',    done:true  },
+        { id:'bang-luong',   icon:'&#x1F4B5;', label:'Bang luong',  desc:'Tinh luong · phu cap · phieu',      done:true  },
+        { id:'kpi',          icon:'&#x1F3AF;', label:'KPI',         desc:'Muc tieu · ket qua · xu huong',     done:true  },
+        { id:'tuyen-dung',   icon:'&#x1F50D;', label:'Tuyen dung',  desc:'Pipeline Kanban · ung vien',         done:true  },
+        { id:'portal',       icon:'&#x1F4E2;', label:'Cong noi bo', desc:'Thong bao · hoi dap',               done:true  },
+        { id:'workflow',     icon:'&#x2705;',  label:'Quy trinh',   desc:'De xuat · phe duyet · lich su',     done:true  },
+        { id:'bao-cao-ns',   icon:'&#x1F4CB;', label:'Bao cao NS',  desc:'Nhan su · bieu do · tong hop',      done:true  }
       ]
     },
     {
-      id: 'tai-chinh', label: 'Tài chính', icon: '💰', color: '#ff4d6d',
+      id: 'tai-chinh', label: 'Tai chinh', icon: '&#x1F4B0;', color: '#ff4d6d',
       items: [
-        { id:'ke-toan', icon:'📒', label:'Sổ quỹ',    desc:'Tiền mặt · số dư đầu/cuối',  done:false },
-        { id:'ke-toan', icon:'📈', label:'Sổ thu',    desc:'Phiếu thu · nguồn thu',      done:false },
-        { id:'ke-toan', icon:'📉', label:'Sổ chi',    desc:'Phiếu chi · phân loại',      done:false },
-        { id:'ke-toan', icon:'🔗', label:'Công nợ',   desc:'KH · NCC · hạn thanh toán',  done:false },
-        { id:'ke-toan', icon:'📊', label:'Sổ cái',    desc:'Bút toán kép · cân đối',     done:false },
-        { id:'ke-toan', icon:'🏗️', label:'Tài sản',   desc:'TSCĐ · khấu hao · CC-DC',   done:false }
+        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hoa don VAT',  desc:'Xuat HD · hach toan 131/511/3331',  done:true  },
+        { id:'ke-toan',     icon:'&#x1F4D2;', label:'So quy',       desc:'Thu chi · so du dau/cuoi',           done:false },
+        { id:'ke-toan',     icon:'&#x1F517;', label:'Cong no',      desc:'KH · NCC · han thanh toan',          done:false }
       ]
     },
     {
-      id: 'quan-tri', label: 'Quản trị', icon: '⚙️', color: '#a78bfa',
+      id: 'quan-tri', label: 'Quan tri', icon: '&#x2699;', color: '#a78bfa',
       items: [
-        { id:'admin-panel',      icon:'🔑', label:'Phân quyền',   desc:'Users · roles · RBAC',         admin:true },
-        { id:'link-user-nv',     icon:'🔗', label:'Link User-NV', desc:'Liên kết tài khoản · nhân viên',admin:true },
-        { id:'account-settings', icon:'👤', label:'Tài khoản',    desc:'Mật khẩu · thông tin cá nhân', admin:false},
-        { id:'ca-nhan',          icon:'📋', label:'Hồ sơ cá nhân',desc:'Xem lương · CC · KPI',         admin:false}
+        { id:'admin-panel',      icon:'&#x1F511;', label:'Phan quyen',    desc:'Users · roles · RBAC',        admin:true  },
+        { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',  desc:'Lien ket tai khoan · NV',     admin:true  },
+        { id:'account-settings', icon:'&#x1F464;', label:'Cai dat TK',    desc:'Mat khau · thong tin ca nhan',admin:false },
+        { id:'ca-nhan',          icon:'&#x1F4CB;', label:'Ho so ca nhan', desc:'Xem luong · CC · KPI',        admin:false }
       ]
     }
   ];

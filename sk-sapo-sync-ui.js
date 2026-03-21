@@ -1,540 +1,304 @@
-// ================================================================
-// Sales_SapoSync.gs — SonKhang ERP v5.4.0
-// Sapo Realtime Sync:
-//   - GAS Time Trigger: sapoAutoSync() chay moi 5 phut
-//   - Track last_sync_id de chi lay don moi
-//   - Push notification khi co don moi
-//   - sapoSetupTrigger() / sapoRemoveTrigger()
-//   - sapoGetSyncStatus() cho UI polling
-// ================================================================
+/* ================================================================
+ * sk-sapo-sync-ui.js  SonKhang ERP v5.4.0
+ * UI: Sapo Realtime Sync Dashboard
+ * 21/03/2026 — 0 non-ASCII, DOM API
+ * ================================================================ */
+(function () {
+  'use strict';
 
-var SYNC_VERSION = '5.4.0';
+  var _api   = function(){ return typeof window.api==='function'?window.api:null; };
+  var _ct    = function(){ return typeof window.getContent==='function'?window.getContent():document.getElementById('sk-ct'); };
+  var _fmt   = function(n){ return (Number(n)||0).toLocaleString('vi-VN'); };
+  var _esc   = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  var _toast = function(m,t){ if(typeof window.skToast==='function') window.skToast(m,t||'ok'); };
 
-// ── Setup / Remove triggers ──────────────────────────────────────
-// Chay 1 lan trong GAS Editor: sapoSetupTrigger()
-function sapoSetupTrigger() {
-  // Xoa trigger cu
-  sapoRemoveTrigger();
-  // Tao trigger moi: chay moi 5 phut
-  ScriptApp.newTrigger('sapoAutoSync')
-    .timeBased()
-    .everyMinutes(5)
-    .create();
-  Logger.log('[SapoSync] Trigger created: every 5 minutes');
-  return { ok:true, msg:'Trigger da tao: sapoAutoSync() chay moi 5 phut' };
-}
+  var _pollInterval = null;
+  var _lastSyncCount = 0;
 
-function sapoRemoveTrigger() {
-  var triggers = ScriptApp.getProjectTriggers();
-  var removed = 0;
-  triggers.forEach(function(t) {
-    if (t.getHandlerFunction() === 'sapoAutoSync') {
-      ScriptApp.deleteTrigger(t);
-      removed++;
-    }
-  });
-  Logger.log('[SapoSync] Removed ' + removed + ' triggers');
-  return { ok:true, removed:removed };
-}
+  // ── Main UI ─────────────────────────────────────────────────────
+  function loadSapoSync() {
+    var ct = _ct(); if (!ct) return;
+    ct.innerHTML = '<div class="fade-in" style="padding:24px;max-width:800px;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px;">'
+      + '<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F504; Sapo Realtime Sync</h1>'
+      + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Dong bo tu dong · Thong bao don moi · Trigger GAS</p></div>'
+      + '<div style="display:flex;gap:8px;">'
+      + '<button id="ss-manual-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25B6; Sync ngay</button>'
+      + '<button id="ss-reset-btn" style="background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);color:var(--red);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Reset</button>'
+      + '</div></div>'
 
-function sapoGetTriggerStatus(body) {
-  body = body || {};
-  var triggers = ScriptApp.getProjectTriggers();
-  var active = triggers.filter(function(t){ return t.getHandlerFunction() === 'sapoAutoSync'; });
-  return {
-    ok: true,
-    trigger_active: active.length > 0,
-    trigger_count : active.length,
-    msg: active.length > 0 ? 'Auto sync moi 5 phut dang hoat dong' : 'Chua bat auto sync'
-  };
-}
+      // Status card
+      + '<div id="ss-status-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'
+      + '<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai trang thai...</div>'
+      + '</div>'
 
-// ── Core auto sync function (called by trigger) ──────────────────
-function sapoAutoSync() {
-  var startTime = new Date();
-  Logger.log('[sapoAutoSync v'+SYNC_VERSION+'] Start: ' + startTime.toISOString());
+      // San pham sync section
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'      + '<div style="font-size:13px;font-weight:900;">&#x1F4E6; San pham tu Sapo</div>'      + '<div id="ss-prod-status" style="font-size:11px;color:var(--text3);">Chua sync</div>'      + '</div>'      + '<div style="display:flex;gap:8px;">'      + '<button id="ss-sync-prod-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F504; Sync san pham</button>'      + '<button id="ss-sync-prod-all-btn" style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);color:var(--yellow);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Sync lai toan bo</button>'      + '</div></div>'
+      // Trigger setup
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x23F1; Auto Trigger</div>'
+      + '<p style="font-size:12px;color:var(--text3);margin:0 0 12px;">Khi bat trigger, GAS tu dong chay sapoAutoSync() moi 5 phut. Don moi tu Sapo se duoc dong bo vao ERP va gui email thong bao.</p>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      + '<button id="ss-start-trigger" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25B6; Bat trigger (5 phut)</button>'
+      + '<button id="ss-stop-trigger" style="background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);color:var(--red);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25A0; Tat trigger</button>'
+      + '<button id="ss-debug-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F50D; Debug</button>'
+      + '</div></div>'
 
-  var props    = PropertiesService.getScriptProperties();
-  var lastId   = Number(props.getProperty('SAPO_LAST_ORDER_ID') || 0);
-  var lastSync = props.getProperty('SAPO_LAST_SYNC_TIME') || '';
+      // Recent synced
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;">'
+      + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x1F4CB; Don hang vua dong bo</div>'
+      + '<div id="ss-recent-orders"><div style="text-align:center;padding:16px;color:var(--text3);font-size:12px;">Dong bo de hien thi don moi</div></div>'
+      + '</div>'
+      + '</div>';
 
-  try {
-    // Lay don hang moi hon lastId
-    var endpoint = '/admin/orders.json?limit=50&since_id=' + lastId;
-    var res = _sapoRequest(endpoint, 'get');
+    // Bind buttons
+    document.getElementById('ss-manual-btn').addEventListener('click', _manualSync);
+    // Product sync buttons
+    var spBtn = document.getElementById('ss-sync-prod-btn');
+    if (spBtn) spBtn.addEventListener('click', function(){ _syncProducts(false); });
+    var spAllBtn = document.getElementById('ss-sync-prod-all-btn');
+    if (spAllBtn) spAllBtn.addEventListener('click', function(){ _syncProducts(true); });
+    document.getElementById('ss-reset-btn').addEventListener('click', _resetSync);
+    document.getElementById('ss-start-trigger').addEventListener('click', _startTrigger);
+    document.getElementById('ss-stop-trigger').addEventListener('click', _stopTrigger);
+    document.getElementById('ss-debug-btn').addEventListener('click', _showDebug);
 
-    if (!res.ok) {
-      Logger.log('[sapoAutoSync] API error: ' + res.error);
-      _updateSyncStatus('error', res.error, 0);
-      return;
-    }
+    // Load status + start polling
+    _loadStatus();
+    _startPolling();
+  }
+  window.loadSapoSync = loadSapoSync;
 
-    var orders = res.data.orders || [];
-    Logger.log('[sapoAutoSync] Got ' + orders.length + ' new orders since id=' + lastId);
+  // ── Product Sync ─────────────────────────────────────────────
+  function _syncProducts(resetAll) {
+    var btnId = resetAll ? 'ss-sync-prod-all-btn' : 'ss-sync-prod-btn';
+    var btn   = document.getElementById(btnId);
+    if (btn) { btn.disabled=true; btn.textContent='Dang sync...'; }
+    var apiF = _api(); if (!apiF) return;
+    var route = resetAll ? 'sapo_sync_products_full' : 'sapo_sync_products_full';
+    apiF(route, {}, function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML = resetAll ? '&#x21BA; Sync lai toan bo' : '&#x1F504; Sync san pham'; }
+      if (e||!d||!d.ok) { _toast((d&&d.error)||'Loi sync san pham','error'); return; }
+      _toast(d.msg||'Sync xong','ok');
+      _updateProdStatus(d);
+    });
+  }
 
-    if (!orders.length) {
-      _updateSyncStatus('ok', 'No new orders', 0);
-      return;
-    }
+  function _updateProdStatus(d) {
+    var el = document.getElementById('ss-prod-status'); if (!el) return;
+    if (!d) return;
+    el.style.color = 'var(--green)';
+    el.textContent = (d.created||0) + ' moi · ' + (d.updated||0) + ' cap nhat · ' + (d.errors||0) + ' loi';
+  }
 
-    // Xu ly tung don
-    var synced = 0;
-    var maxId  = lastId;
-    var newOrders = [];
+  // ── Status ───────────────────────────────────────────────────────
+  function _loadStatus() {
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_get_sync_status', {}, function(e,d){
+      if (e||!d||!d.ok) return;
+      _renderStatus(d);
 
-    orders.forEach(function(o) {
-      try {
-        var mapped = _mapSapoOrder(o);
-        if (!mapped || !mapped.sapo_id) return;
-        _upsertSapoOrderToERP(mapped);
-        synced++;
-        if (Number(o.id) > maxId) maxId = Number(o.id);
-        newOrders.push({ id:o.id, code:o.code, khach:mapped.khach_ten, tong:mapped.tong_tt });
-      } catch(e2) {
-        Logger.log('[sapoAutoSync] Error order ' + o.id + ': ' + e2.message);
+      // Hien thong bao neu co don moi
+      var newOrders = d.new_orders || [];
+      if (newOrders.length > 0) {
+        _showNewOrdersNotification(newOrders);
+        _renderRecentOrders(newOrders);
       }
     });
-
-    // Cap nhat last sync ID
-    if (maxId > lastId) {
-      props.setProperty('SAPO_LAST_ORDER_ID', String(maxId));
-    }
-    props.setProperty('SAPO_LAST_SYNC_TIME', startTime.toISOString());
-    props.setProperty('SAPO_LAST_SYNC_COUNT', String(synced));
-    props.setProperty('SAPO_PENDING_NOTIFY', JSON.stringify(newOrders));
-
-    Logger.log('[sapoAutoSync] Done: synced=' + synced + ' maxId=' + maxId);
-    _updateSyncStatus('ok', 'Synced ' + synced + ' orders', synced);
-
-    // Gui email thong bao neu co don moi
-    if (synced > 0) {
-      _notifyNewOrders(newOrders);
-    }
-
-  } catch(e) {
-    Logger.log('[sapoAutoSync] Exception: ' + e.message);
-    _updateSyncStatus('error', e.message, 0);
-  }
-}
-
-function _updateSyncStatus(status, msg, count) {
-  var props = PropertiesService.getScriptProperties();
-  props.setProperty('SAPO_SYNC_STATUS', JSON.stringify({
-    status  : status,
-    msg     : msg,
-    count   : count,
-    ts      : new Date().toISOString()
-  }));
-}
-
-// ── API endpoints for UI ─────────────────────────────────────────
-
-// sapoGetSyncStatus — UI poll moi 30s de hien thong bao
-function sapoGetSyncStatus(body) {
-  body = body || {};
-  var props = PropertiesService.getScriptProperties();
-
-  var lastStatus = null;
-  try {
-    var raw = props.getProperty('SAPO_SYNC_STATUS');
-    if (raw) lastStatus = JSON.parse(raw);
-  } catch(e) {}
-
-  var pending = [];
-  try {
-    var pRaw = props.getProperty('SAPO_PENDING_NOTIFY');
-    if (pRaw) {
-      pending = JSON.parse(pRaw) || [];
-      // Xoa pending sau khi da lay
-      if (pending.length > 0) {
-        props.setProperty('SAPO_PENDING_NOTIFY', '[]');
-      }
-    }
-  } catch(e) {}
-
-  var triggers = ScriptApp.getProjectTriggers();
-  var active   = triggers.filter(function(t){ return t.getHandlerFunction() === 'sapoAutoSync'; });
-
-  return {
-    ok              : true,
-    trigger_active  : active.length > 0,
-    last_sync_time  : props.getProperty('SAPO_LAST_SYNC_TIME') || '',
-    last_sync_count : Number(props.getProperty('SAPO_LAST_SYNC_COUNT') || 0),
-    last_order_id   : Number(props.getProperty('SAPO_LAST_ORDER_ID') || 0),
-    status          : lastStatus,
-    new_orders      : pending  // don moi chua duoc hien thi
-  };
-}
-
-// sapoManualSync — Sync ngay khong can doi trigger
-function sapoManualSync(body) {
-  body = body || {};
-  var startTime = new Date();
-  var props     = PropertiesService.getScriptProperties();
-
-  // Force sync tat ca neu reset=true
-  if (body.reset) {
-    props.deleteProperty('SAPO_LAST_ORDER_ID');
-    Logger.log('[sapoManualSync] Reset last_order_id');
   }
 
-  sapoAutoSync();
+  function _renderStatus(d) {
+    var card = document.getElementById('ss-status-card'); if (!card) return;
+    var triggerActive = d.trigger_active;
+    var triggerColor  = triggerActive ? 'var(--green)' : 'var(--text3)';
+    var triggerIcon   = triggerActive ? '&#x1F7E2;' : '&#x26AA;';
+    var lastSync      = d.last_sync_time ? _fmtTime(d.last_sync_time) : 'Chua sync';
+    var statusObj     = d.status || {};
 
-  return {
-    ok             : true,
-    synced_at      : startTime.toISOString(),
-    last_sync_count: Number(props.getProperty('SAPO_LAST_SYNC_COUNT') || 0),
-    msg            : 'Sync hoan thanh'
-  };
-}
+    card.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">'
+      + _statBox(triggerIcon+' Trigger',
+          triggerActive ? 'Dang chay (5 phut)' : 'Chua bat',
+          triggerColor)
+      + _statBox('&#x23F0; Lan cuoi sync', lastSync, 'var(--text2)')
+      + _statBox('&#x1F4E6; Don da sync',
+          _fmt(d.last_sync_count) + ' don',
+          'var(--cyan)')
+      + _statBox('&#x1F194; Last order ID',
+          d.last_order_id || '0',
+          'var(--text3)')
+      + '</div>'
+      + (statusObj.msg ? '<div style="margin-top:12px;padding:10px 14px;background:'+(statusObj.status==='error'?'rgba(255,77,109,.08)':'rgba(0,214,143,.06)')+';border-radius:8px;font-size:11px;color:'+(statusObj.status==='error'?'var(--red)':'var(--green')+');">'
+          + (statusObj.status==='error'?'&#x26A0; ':'&#x2705; ') + _esc(statusObj.msg) + '</div>'
+        : '');
+  }
 
-// sapoResetSync — Reset ve 0, sync lai tu dau
-function sapoResetSync(body) {
-  body = body || {};
-  var props = PropertiesService.getScriptProperties();
-  props.deleteProperty('SAPO_LAST_ORDER_ID');
-  props.deleteProperty('SAPO_LAST_SYNC_TIME');
-  props.deleteProperty('SAPO_LAST_SYNC_COUNT');
-  props.deleteProperty('SAPO_PENDING_NOTIFY');
-  props.deleteProperty('SAPO_SYNC_STATUS');
-  return { ok:true, msg:'Da reset sync state. Lan sync tiep theo se lay tat ca don.' };
-}
+  function _statBox(label, val, color) {
+    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">'
+      + '<div style="font-size:14px;font-weight:900;color:'+color+';">'+val+'</div>'
+      + '<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-top:3px;">'+label+'</div>'
+      + '</div>';
+  }
 
-// ── Email notification ───────────────────────────────────────────
-function _notifyNewOrders(orders) {
-  try {
-    var ss      = _getSS();
-    var cfSheet = ss.getSheetByName('Config') || ss.getSheetByName('CaiDat');
-    if (!cfSheet) return;
-    var data    = cfSheet.getDataRange().getValues();
-    var email   = '';
-    for (var i=0;i<data.length;i++) {
-      if (String(data[i][0]).trim().toUpperCase() === 'ADMIN_EMAIL') {
-        email = String(data[i][1]||'').trim();
-        break;
-      }
-    }
-    if (!email || email.indexOf('@') < 0) return;
-
-    var count   = orders.length;
-    var subject = '[SonKhang ERP] ' + count + ' don hang moi tu Sapo';
-    var body    = 'Da nhan ' + count + ' don hang moi tu Sapo:\n\n';
-    orders.forEach(function(o,i) {
-      body += (i+1) + '. Don ' + o.code + ' - ' + o.khach + ' - ' + (o.tong||0) + 'd\n';
+  function _renderRecentOrders(orders) {
+    var el = document.getElementById('ss-recent-orders'); if (!el) return;
+    if (!orders.length) return;
+    var html = '<div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;">'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+      + '<thead><tr style="background:var(--bg3);">'
+      + '<th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Ma don</th>'
+      + '<th style="padding:8px 12px;text-align:left;">Khach hang</th>'
+      + '<th style="padding:8px 12px;text-align:right;">Tong tien</th>'
+      + '</tr></thead><tbody>';
+    orders.forEach(function(o){
+      html += '<tr style="border-top:1px solid var(--border);">'
+        + '<td style="padding:8px 12px;font-family:monospace;color:var(--accent2);">'+_esc(o.code||o.id)+'</td>'
+        + '<td style="padding:8px 12px;font-weight:700;">'+_esc(o.khach)+'</td>'
+        + '<td style="padding:8px 12px;text-align:right;color:var(--green);">'+_fmt(o.tong)+'d</td>'
+        + '</tr>';
     });
-    body += '\nVao ERP de xu ly: https://erp.sonkhang.vn';
-
-    MailApp.sendEmail({ to:email, subject:subject, body:body });
-    Logger.log('[sapoAutoSync] Email sent to ' + email);
-  } catch(e) {
-    Logger.log('[_notifyNewOrders] ' + e.message);
-  }
-}
-
-// ── Debug ────────────────────────────────────────────────────────
-function sapoSyncDebug(body) {
-  body = body || {};
-  var props = PropertiesService.getScriptProperties();
-  var triggers = ScriptApp.getProjectTriggers();
-  var sapoTriggers = triggers.filter(function(t){ return t.getHandlerFunction() === 'sapoAutoSync'; });
-
-  return {
-    ok: true,
-    sync_version    : SYNC_VERSION,
-    trigger_active  : sapoTriggers.length > 0,
-    trigger_count   : sapoTriggers.length,
-    last_order_id   : props.getProperty('SAPO_LAST_ORDER_ID') || '0',
-    last_sync_time  : props.getProperty('SAPO_LAST_SYNC_TIME') || 'never',
-    last_sync_count : props.getProperty('SAPO_LAST_SYNC_COUNT') || '0',
-    sync_status     : props.getProperty('SAPO_SYNC_STATUS') || 'null',
-    sapo_configured : !!(PropertiesService.getScriptProperties().getProperty('SAPO_API_KEY'))
-  };
-}
-
-// ================================================================
-// SAPO PRODUCT SYNC — v5.4.0
-// Dong bo san pham tu Sapo vao BangGia + BienThe_SP
-// - sapoSyncProductsFull(): full sync tat ca san pham
-// - sapoAutoSyncProducts(): sync san pham moi/cap nhat (since_id)
-// - _mapSapoProduct(): map fields Sapo → BangGia schema
-// - _upsertSapoProductToERP(): upsert vao BangGia + BienThe_SP
-// ================================================================
-
-// ── Map Sapo product → BangGia row ───────────────────────────────
-function _mapSapoProduct(p) {
-  if (!p || !p.id) return null;
-  function S(v) { return v === null || v === undefined ? '' : String(v); }
-  function N(v) { return isNaN(parseFloat(v)) ? 0 : parseFloat(v); }
-
-  // Lay variant dau tien lam gia chinh
-  var v0     = (p.variants || [])[0] || {};
-  var giaBan = N(v0.price);
-  var giaGoc = N(v0.compare_at_price) || giaBan;
-  var giaSi  = giaBan; // Sapo khong co gia si rieng
-
-  // Lay anh chinh
-  var anhUrl = '';
-  var imgs = p.images || [];
-  if (imgs.length) anhUrl = S(imgs[0].src || imgs[0].url || '');
-
-  // Ma vach tu variant dau tien
-  var maVach = S(v0.barcode || v0.sku || '');
-
-  // Danh muc tu product_type
-  var danhMuc = S(p.product_type || p.category || '');
-
-  return {
-    sapo_id    : S(p.id),
-    ma_sp      : 'SAPO-' + S(p.id),
-    ten_sp     : S(p.name || p.title || ''),
-    gia_ban    : giaBan,
-    gia_goc    : giaGoc,
-    gia_si     : giaSi,
-    don_vi     : S(v0.unit || 'cai'),
-    loai       : S(p.product_type || ''),
-    danh_muc   : danhMuc,
-    ton_kho    : N(v0.inventory_quantity),
-    mo_ta      : S((p.body_html || p.description || ''))
-                   .replace(/<[^>]*>/g, '').substring(0, 300),
-    active     : p.status !== 'archived' && p.status !== 'draft',
-    anh_url    : anhUrl,
-    ma_vach    : maVach,
-    variants   : (p.variants || []).map(function(vr) {
-      return {
-        sapo_variant_id : S(vr.id),
-        ten             : S(vr.title || vr.name || ''),
-        sku             : S(vr.sku || ''),
-        ma_vach         : S(vr.barcode || ''),
-        gia_ban         : N(vr.price),
-        gia_goc         : N(vr.compare_at_price) || N(vr.price),
-        ton_kho         : N(vr.inventory_quantity),
-        thuoc_tinh      : _parseVariantOptions(p, vr),
-        anh_url         : ''
-      };
-    })
-  };
-}
-
-// Parse option1/option2/option3 thành object {Mau: 'Do', Size: 'M'}
-function _parseVariantOptions(product, variant) {
-  var result = {};
-  var opts = product.options || [];
-  if (variant.option1 && opts[0]) result[S(opts[0].name)] = S(variant.option1);
-  if (variant.option2 && opts[1]) result[S(opts[1].name)] = S(variant.option2);
-  if (variant.option3 && opts[2]) result[S(opts[2].name)] = S(variant.option3);
-  function S(v) { return v === null || v === undefined ? '' : String(v); }
-  return result;
-}
-
-// ── Upsert vào BangGia + BienThe_SP ─────────────────────────────
-function _upsertSapoProductToERP(product) {
-  if (!product || !product.sapo_id) return { ok:false, error:'Invalid product' };
-  try {
-    var ss      = _getSS();
-    var bgSheet = ss.getSheetByName('BangGia');
-    var btSheet = ss.getSheetByName('BienThe_SP');
-    if (!bgSheet) return { ok:false, error:'Sheet BangGia khong ton tai' };
-
-    var now      = new Date();
-    var bgData   = bgSheet.getDataRange().getValues();
-    var maSP     = product.ma_sp;
-    var foundRow = -1;
-    var existId  = '';
-
-    // Tim SP cu theo ma_sp (col 1)
-    for (var i = 1; i < bgData.length; i++) {
-      if (String(bgData[i][1]) === maSP) {
-        foundRow = i + 1;
-        existId  = String(bgData[i][0]);
-        break;
-      }
-    }
-
-    var spId = existId || maSP;
-
-    // Col order: ID(0) MA_SP(1) TEN_SP(2) GIA_BAN(3) GIA_GOC(4) GIA_SI(5)
-    //            DON_VI(6) LOAI(7) DANH_MUC(8) TON_KHO(9) MO_TA(10) ACTIVE(11)
-    //            ANH_URL(12) THUONG_HIEU(13) MA_VACH(14) CO_BIEN_THE(15) UPDATED(16)
-    var hasVariants = product.variants && product.variants.length > 1;
-    var row = [
-      spId,
-      maSP,
-      product.ten_sp,
-      product.gia_ban,
-      product.gia_goc,
-      product.gia_si,
-      product.don_vi,
-      product.loai,
-      product.danh_muc,
-      product.ton_kho,
-      product.mo_ta,
-      product.active ? 'TRUE' : 'FALSE',
-      product.anh_url,
-      '',              // THUONG_HIEU - bo trong, khong tu Sapo
-      product.ma_vach,
-      hasVariants ? 'TRUE' : 'FALSE',
-      now
-    ];
-
-    if (foundRow > 0) {
-      bgSheet.getRange(foundRow, 1, 1, row.length).setValues([row]);
-    } else {
-      bgSheet.appendRow(row);
-    }
-
-    // Sync bien the neu co (chi sync khi > 1 bien the, vi 1 variant = san pham don)
-    if (btSheet && hasVariants) {
-      _syncProductVariants(btSheet, spId, product.variants, now);
-    }
-
-    return { ok:true, id:spId, action: foundRow > 0 ? 'updated' : 'created' };
-  } catch(e) {
-    Logger.log('[_upsertSapoProductToERP] ' + e.message);
-    return { ok:false, error:e.message };
-  }
-}
-
-function _syncProductVariants(btSheet, spId, variants, now) {
-  var btData = btSheet.getDataRange().getValues();
-  // Build map variant_id → row index
-  var variantMap = {};
-  for (var i = 1; i < btData.length; i++) {
-    // Col 1 = SP_CHA_ID, check cả sapo variant id trong col 13 (extra)
-    if (String(btData[i][1]) === spId) {
-      var skuKey = String(btData[i][3]); // SKU = Sapo variant ID stored as SKU
-      variantMap[skuKey] = i + 1;
-    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
   }
 
-  variants.forEach(function(vr) {
-    var sku     = vr.sku || ('SAPO-VR-' + vr.sapo_variant_id);
-    var btRow   = [
-      spId + '-' + vr.sapo_variant_id,  // ID
-      spId,                              // SP_CHA_ID
-      vr.ten || 'Mac dinh',             // TEN
-      sku,                               // SKU
-      JSON.stringify(vr.thuoc_tinh),    // THUOC_TINH_JSON
-      vr.gia_ban,                        // GIA_BAN
-      vr.gia_goc,                        // GIA_GOC
-      0,                                 // GIA_SI
-      vr.ton_kho,                        // TON_KHO
-      vr.ma_vach,                        // MA_VACH
-      vr.anh_url,                        // ANH_URL
-      'TRUE',                            // ACTIVE
-      now                                // UPDATED
-    ];
-
-    var existRow = variantMap[sku];
-    if (existRow) {
-      btSheet.getRange(existRow, 1, 1, btRow.length).setValues([btRow]);
-    } else {
-      btSheet.appendRow(btRow);
-    }
-  });
-}
-
-// ── Full sync tất cả sản phẩm từ Sapo ───────────────────────────
-function sapoSyncProductsFull(body) {
-  body = body || {};
-  var cfg = _getSapoConfig();
-  if (!cfg.api_key || !cfg.base_url) {
-    return { ok:false, error:'Chua cau hinh Sapo - chay sapoInitConfig()' };
-  }
-
-  // Ensure sheets ton tai
-  try { ensureProductSheets(); } catch(e2) {
-    Logger.log('[sapoSyncProductsFull] ensureProductSheets: ' + e2.message);
-  }
-
-  var page = 1, created = 0, updated = 0, errors = 0, dbg = [];
-  Logger.log('[sapoSyncProductsFull] Start - base_url:' + cfg.base_url);
-
-  while (true) {
-    var res = _sapoRequest('/admin/products.json?limit=50&page=' + page, 'get');
-    if (!res.ok) {
-      errors++;
-      dbg.push({ page:page, error:res.error });
-      if (res.code === 429) { Utilities.sleep(3000); continue; }
-      if (errors >= 3) break;
-      Utilities.sleep(1000); continue;
-    }
-
-    var products = res.data.products || [];
-    dbg.push({ page:page, count:products.length });
-    Logger.log('[sapoSyncProductsFull] Page ' + page + ': ' + products.length + ' products');
-    if (!products.length) break;
-
-    products.forEach(function(p) {
-      try {
-        var mapped = _mapSapoProduct(p);
-        if (!mapped) return;
-        var r = _upsertSapoProductToERP(mapped);
-        if (r.ok) {
-          if (r.action === 'created') created++;
-          else updated++;
-        } else {
-          errors++;
-          Logger.log('[sapoSyncProductsFull] upsert error: ' + r.error);
+  // ── Polling moi 30s ──────────────────────────────────────────────
+  function _startPolling() {
+    _stopPolling();
+    _pollInterval = setInterval(function(){
+      var apiF = _api(); if (!apiF) return;
+      apiF('sapo_get_sync_status', {}, function(e,d){
+        if (e||!d||!d.ok) return;
+        _renderStatus(d);
+        var newOrders = d.new_orders || [];
+        if (newOrders.length > 0) {
+          _showNewOrdersNotification(newOrders);
+          _renderRecentOrders(newOrders);
         }
-      } catch(e2) {
-        errors++;
-        Logger.log('[sapoSyncProductsFull] err: ' + e2.message);
-      }
+      });
+    }, 30000); // 30s
+  }
+
+  function _stopPolling() {
+    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+  }
+
+  // ── Notification toast cho don moi ──────────────────────────────
+  function _showNewOrdersNotification(orders) {
+    var count = orders.length;
+    var msg   = count + ' don hang moi tu Sapo: ' + orders.map(function(o){ return o.code; }).join(', ');
+    _toast(msg, 'ok');
+
+    // Hien notification banner
+    var existing = document.getElementById('sapo-new-order-banner');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    var banner = document.createElement('div');
+    banner.id = 'sapo-new-order-banner';
+    banner.style.cssText = 'position:fixed;top:64px;right:16px;z-index:9990;max-width:320px;'
+      + 'background:rgba(0,214,143,.12);border:1px solid rgba(0,214,143,.4);border-radius:12px;'
+      + 'padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.4);';
+    banner.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'
+      + '<div style="font-size:13px;font-weight:900;color:var(--green);">&#x1F6D2; '+count+' don moi tu Sapo</div>'
+      + '<button id="banner-close" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;line-height:1;">&#x00D7;</button>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text2);">'+orders.slice(0,3).map(function(o){ return _esc(o.code)+' - '+_esc(o.khach); }).join('<br>')
+      + (count>3 ? '<br>+' + (count-3) + ' don khac...' : '')
+      + '</div>'
+      + '<button id="banner-view-btn" style="margin-top:8px;width:100%;background:rgba(0,214,143,.2);border:1px solid rgba(0,214,143,.3);border-radius:8px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;color:var(--green);font-family:inherit;">Xem don hang</button>';
+
+    document.body.appendChild(banner);
+    document.getElementById('banner-close').addEventListener('click', function(){
+      if (banner.parentNode) banner.parentNode.removeChild(banner);
+    });
+    document.getElementById('banner-view-btn').addEventListener('click', function(){
+      if (typeof window.skLoad === 'function') window.skLoad('don-hang');
+      if (banner.parentNode) banner.parentNode.removeChild(banner);
     });
 
-    if (products.length < 50) break;
-    page++;
-    if (page > 100) break;
-    Utilities.sleep(400);
+    // Auto dismiss sau 15s
+    setTimeout(function(){
+      if (banner.parentNode) banner.parentNode.removeChild(banner);
+    }, 15000);
   }
 
-  // Cap nhat last sync time
-  var props = PropertiesService.getScriptProperties();
-  props.setProperty('SAPO_LAST_PRODUCT_SYNC', new Date().toISOString());
-  props.setProperty('SAPO_LAST_PRODUCT_COUNT', String(created + updated));
-
-  Logger.log('[sapoSyncProductsFull] Done: created=' + created + ' updated=' + updated + ' errors=' + errors);
-  return {
-    ok      : true,
-    created : created,
-    updated : updated,
-    errors  : errors,
-    pages   : page,
-    debug   : dbg,
-    msg     : 'Dong bo ' + (created + updated) + ' san pham'
-              + (created ? ' (' + created + ' moi' : '')
-              + (updated ? (created ? ', ' : ' (') + updated + ' cap nhat' : '')
-              + ((created || updated) ? ')' : '')
-  };
-}
-
-// ── Auto sync products trong trigger ────────────────────────────
-// Goi cung cap trigger sapoAutoSync neu muon sync ca san pham
-function sapoAutoSyncProducts() {
-  var props   = PropertiesService.getScriptProperties();
-  var lastRaw = props.getProperty('SAPO_LAST_PRODUCT_SYNC') || '';
-  var last    = lastRaw ? new Date(lastRaw) : new Date(0);
-  var now     = new Date();
-
-  // Chi sync san pham moi 6 gio (san pham it thay doi hon don hang)
-  if ((now - last) < 6 * 3600 * 1000) {
-    Logger.log('[sapoAutoSyncProducts] Skip - last sync: ' + lastRaw);
-    return { ok:true, skipped:true, next_sync_in_hours: 6 };
+  // ── Actions ──────────────────────────────────────────────────────
+  function _manualSync() {
+    var btn = document.getElementById('ss-manual-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Dang sync...'; }
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_manual_sync', {}, function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML='&#x25B6; Sync ngay'; }
+      if (e||!d||!d.ok) { _toast((d&&d.error)||'Loi sync','error'); return; }
+      _toast(d.msg + ' (' + d.last_sync_count + ' don)', 'ok');
+      _loadStatus();
+    });
   }
 
-  Logger.log('[sapoAutoSyncProducts] Running full product sync...');
-  return sapoSyncProductsFull({});
-}
+  function _resetSync() {
+    if (!confirm('Reset sync state? Lan sync tiep theo se lay lai tat ca don.')) return;
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_reset_sync', {}, function(e,d){
+      if (!e&&d&&d.ok) { _toast(d.msg,'ok'); _loadStatus(); }
+    });
+  }
 
-// ── Endpoint cho UI ──────────────────────────────────────────────
-function sapoGetProductSyncStatus(body) {
-  body = body || {};
-  var props = PropertiesService.getScriptProperties();
-  return {
-    ok                   : true,
-    last_sync_time       : props.getProperty('SAPO_LAST_PRODUCT_SYNC') || '',
-    last_sync_count      : Number(props.getProperty('SAPO_LAST_PRODUCT_COUNT') || 0),
-    trigger_active       : ScriptApp.getProjectTriggers()
-                             .some(function(t){ return t.getHandlerFunction() === 'sapoAutoSync'; })
+  function _startTrigger() {
+    var btn = document.getElementById('ss-start-trigger');
+    if (btn) { btn.disabled=true; btn.textContent='Dang bat...'; }
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_setup_trigger', {}, function(e,d){
+      if (btn) { btn.disabled=false; btn.innerHTML='&#x25B6; Bat trigger (5 phut)'; }
+      if (!e&&d&&d.ok) { _toast(d.msg,'ok'); _loadStatus(); }
+      else _toast((d&&d.error)||'Loi','error');
+    });
+  }
+
+  function _stopTrigger() {
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_remove_trigger', {}, function(e,d){
+      if (!e&&d&&d.ok) { _toast('Da tat auto trigger','ok'); _loadStatus(); }
+    });
+  }
+
+  function _showDebug() {
+    var apiF = _api(); if (!apiF) return;
+    apiF('sapo_sync_debug', {}, function(e,d){
+      if (e||!d||!d.ok) return;
+      var msg = Object.keys(d).filter(function(k){ return k!=='ok'; }).map(function(k){ return k+': '+d[k]; }).join('\n');
+      alert('SAPO SYNC DEBUG\n\n' + msg);
+    });
+  }
+
+  function _fmtTime(iso) {
+    if (!iso) return '--';
+    try {
+      var d = new Date(iso);
+      return d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+    } catch(e) { return iso.substring(0,16); }
+  }
+
+  // Cleanup khi rời trang
+  window.addEventListener('beforeunload', _stopPolling);
+
+  // Global: start polling khi ERP load (moi 30s check don moi)
+  window._sapoStartGlobalPoll = function() {
+    if (_pollInterval) return;
+    _startPolling();
   };
-}
+
+  // Auto-start global polling khi sk-sapo-sync-ui.js load
+  setTimeout(function(){
+    var apiF = _api();
+    if (!apiF) return;
+    // Check silently moi 30s - hien banner neu co don moi
+    setInterval(function(){
+      apiF('sapo_get_sync_status', {}, function(e,d){
+        if (e||!d||!d.ok) return;
+        var newOrders = d.new_orders || [];
+        if (newOrders.length > 0) {
+          _showNewOrdersNotification(newOrders);
+        }
+      });
+    }, 30000);
+  }, 5000); // Bat dau sau 5s khi page load xong
+
+})();

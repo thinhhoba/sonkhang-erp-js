@@ -161,92 +161,202 @@ function _loadSetupStats(){
 
 // Parse file danh mục Misa
 function _parseDanhMucFile(file){
-  if(typeof XLSX==='undefined'){_toast('Dang tai thu vien, thu lai sau 2 giay','error');return;}
-  _toast('Dang doc "'+file.name+'"...','ok');
+  // Kiem tra SheetJS da load chua, neu chua thi doi 2s roi retry
+  if(typeof XLSX==='undefined'){
+    _toast('Dang tai thu vien Excel, vui long thu lai sau 3 giay...','ok');
+    setTimeout(function(){ _parseDanhMucFile(file); }, 3000);
+    return;
+  }
+  var sEl=document.getElementById('dm-status');
+  if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Dang doc file "'+file.name+'"...</span>';
+  _toast('Dang doc file danh muc...','ok');
+
   var rd=new FileReader();
+  rd.onerror=function(){ _toast('Khong the doc file. Thu lai.','error'); };
   rd.onload=function(ev){
     try{
       var wb=XLSX.read(ev.target.result,{type:'binary'});
       var ws=wb.Sheets[wb.SheetNames[0]];
-      var raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-      // File Misa: Row 0=title, Row 2=header, Row 3+=data
-      // Cols: STT | Ma | Ten | DVT | La don gia sau thue
-      var rows=[];
-      for(var ri=3;ri<raw.length;ri++){
-        var r=raw[ri];
-        var ma=String(r[1]||'').trim();
-        if(!ma||ma==='nan')continue;
-        if(/^t.ng/i.test(ma))continue;
-        rows.push({ma:ma,ten:String(r[2]||'').trim(),dvt:String(r[3]||'cai').trim(),sau_thue:String(r[4]||'')});
+      var raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
+
+      // File Misa: "DANH SACH HANG HOA, DICH VU"
+      // Row 0 = title, Row 1 = blank, Row 2 = header, Row 3+ = data
+      // Auto-detect: tim dong dau tien co "Ma" + "Ten" + "DVT" trong cac cols
+      var dataStart = 3; // default Misa
+      var colMa=1, colTen=2, colDvt=3, colSau=4; // default
+
+      for(var ri=0; ri<Math.min(raw.length,8); ri++){
+        var row=raw[ri];
+        var joined=row.map(function(c){return String(c||'').toLowerCase();}).join('|');
+        if(joined.indexOf('ma')>=0 && joined.indexOf('ten')>=0){
+          // Tim cols
+          for(var ci=0; ci<row.length; ci++){
+            var h=String(row[ci]||'').toLowerCase().trim();
+            if(h==='ma'||h==='ma hang'||h==='ma han') colMa=ci;
+            else if(h==='ten'||h==='ten hang'||h==='ten san pham') colTen=ci;
+            else if(h==='dvt'||h==='don vi'||h==='don vi tinh') colDvt=ci;
+            else if(h.indexOf('sau')>=0||h.indexOf('thue')>=0) colSau=ci;
+          }
+          dataStart=ri+1;
+          break;
+        }
       }
-      if(!rows.length){_toast('Khong doc duoc du lieu. Kiem tra file.','error');return;}
-      _toast('Doc duoc '+rows.length+' hang hoa. Dang luu...','ok');
+
+      var rows=[];
+      for(var ri2=dataStart; ri2<raw.length; ri2++){
+        var r=raw[ri2];
+        var ma=String(r[colMa]||'').trim();
+        if(!ma||ma==='nan'||/^(ma|stt)/i.test(ma)) continue;
+        if(/^t.{0,4}ng/i.test(ma)) continue; // skip tong cong
+        rows.push({
+          ma      : ma,
+          ten     : String(r[colTen]||'').trim(),
+          dvt     : String(r[colDvt]||'cai').trim()||'cai',
+          sau_thue: String(r[colSau]||'').trim()
+        });
+      }
+
+      if(!rows.length){
+        var msg='Khong doc duoc du lieu ('+raw.length+' dong). File co the bi bao ve hoac dinh dang khac.';
+        _toast(msg,'error');
+        if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+msg+'</span>';
+        return;
+      }
+
+      var preview=rows.slice(0,2).map(function(r2){return r2.ma+'|'+r2.ten.substr(0,15);}).join(', ');
+      if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Doc duoc '+rows.length+' hang hoa ('+preview+'...). Dang luu...</span>';
+
       _api()('misa_import_danh_muc',{rows:rows,replace:true},function(e,d){
-        var s=document.getElementById('dm-status');
         if(!e&&d&&d.ok){
           _toast(d.msg,'ok');
-          if(s) s.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+_esc(d.msg)+'</span>';
+          if(sEl) sEl.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+d.msg+'</span>';
           _loadSetupStats();
         } else {
-          var err=(d&&d.error)||'Loi';
-          _toast(err,'error');
-          if(s) s.innerHTML='<span style="color:var(--red);">&#x274C; '+_esc(err)+'</span>';
+          var err=(d&&d.error)||'Loi server';
+          _toast('Loi: '+err,'error');
+          if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+err+'</span>';
         }
       });
-    }catch(err){_toast('Loi doc file: '+err.message,'error');}
+    }catch(parseErr){
+      var msg='Loi doc file: '+parseErr.message;
+      _toast(msg,'error');
+      if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+msg+'</span>';
+    }
   };
   rd.readAsBinaryString(file);
 }
 
 // Parse file tồn kho Misa (đã có từ v5.10, tái dùng logic)
 function _parseTonKhoMisa(file){
-  if(typeof XLSX==='undefined'){_toast('Dang tai thu vien, thu lai','error');return;}
-  _toast('Dang doc ton kho "'+file.name+'"...','ok');
+  if(typeof XLSX==='undefined'){
+    _toast('Dang tai thu vien Excel, thu lai sau 3 giay...','ok');
+    setTimeout(function(){ _parseTonKhoMisa(file); }, 3000);
+    return;
+  }
+  var sEl=document.getElementById('tk-status');
+  if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Dang doc file ton kho "'+file.name+'"...</span>';
+  _toast('Dang doc file ton kho...','ok');
+
   var rd=new FileReader();
+  rd.onerror=function(){ _toast('Khong the doc file.','error'); };
   rd.onload=function(ev){
     try{
-      var wb=XLSX.read(ev.target.result,{type:'binary',cellDates:true});
+      var wb=XLSX.read(ev.target.result,{type:'binary'});
       var ws=wb.Sheets[wb.SheetNames[0]];
-      var raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-      // Detect file Misa gốc: Row 0="TỔNG HỢP TỒN KHO", data từ row 5
-      var isMisa=/T.NG H.P T.N KHO/i.test(String((raw[0]||[])[0]||''));
+      // raw:true de giu nguyen so (tranh SheetJS format number -> string)
+      var raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
+
+      if(!raw||!raw.length){ _toast('File trong hoac khong doc duoc.','error'); return; }
+
+      // ── Detect ngay tu dong 1 (Kho: ... Ngay DD thang MM nam YYYY) ─
       var ngay='';
-      var rows=[];
-      if(isMisa){
-        // Lấy ngày từ row 1
-        var r1=String((raw[1]||[])[0]||'');
-        var dm=r1.match(/(\d{1,2})\s+th.{1,3}ng\s+(\d{1,2})\s+n.{1,3}m\s+(\d{4})/i);
-        if(dm) ngay=dm[1]+'/'+dm[2]+'/'+dm[3];
-        for(var ri=5;ri<raw.length;ri++){
-          var r=raw[ri];
-          var ma=String(r[1]||'').trim();
-          if(!ma||/^t.{0,5}ng/i.test(ma))continue;
-          var cuoiSL=parseFloat(String(r[10]||'0').replace(/[^0-9.]/g,''))||0;
-          var cuoiGT=parseFloat(String(r[11]||'0').replace(/[^0-9.]/g,''))||0;
-          rows.push({ma_hang:ma,ten_hang:String(r[2]||'').trim(),dvt:String(r[3]||'cai').trim(),
-            ton_dau:parseFloat(String(r[4]||'0'))||0,nhap_ky:parseFloat(String(r[6]||'0'))||0,
-            xuat_ky:parseFloat(String(r[8]||'0'))||0,ton_cuoi:cuoiSL,
-            gia_von:cuoiSL>0?Math.round(cuoiGT/cuoiSL):0});
-        }
-      } else {
-        // Custom format
-        _toast('File khong phai dinh dang Misa chuan. Vui long dung file "Tong hop ton kho" tu Misa.','error'); return;
+      for(var ti=0;ti<Math.min(raw.length,3);ti++){
+        var firstCell=String((raw[ti]||[])[0]||'');
+        // Match: "Ngay 21 thang 3 nam 2026" (co dau hoac khong dau)
+        var m1=firstCell.match(/[Nn]g.{1,3}y\s+(\d{1,2})\s+th.{1,4}ng\s+(\d{1,2})\s+n.{1,3}m\s+(\d{4})/);
+        var m2=firstCell.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if(m1){ ngay=m1[1]+'/'+m1[2]+'/'+m1[3]; break; }
+        if(m2){ ngay=m2[1]+'/'+m2[2]+'/'+m2[3]; break; }
       }
-      if(!rows.length){_toast('Khong doc duoc du lieu ton kho','error');return;}
       if(!ngay) ngay=new Date().toLocaleDateString('vi-VN');
+
+      // ── Detect dong bat dau data ─────────────────────────────────
+      // File Misa Tong hop ton kho:
+      //   Row 0: "TONG HOP TON KHO" (co the co dau hoac khong)
+      //   Row 1: "Kho: ... Ngay..."
+      //   Row 2: blank
+      //   Row 3: group header (Ten kho | Ma hang | Ten hang | DVT | Dau ky | Nhap | Xuat | Cuoi)
+      //   Row 4: sub-header (So luong | Gia tri x4)
+      //   Row 5+: data
+      // Cols: 0=TenKho, 1=MaHang, 2=TenHang, 3=DVT,
+      //        4=DauSL, 5=DauGT, 6=NhapSL, 7=NhapGT, 8=XuatSL, 9=XuatGT, 10=CuoiSL, 11=CuoiGT
+      var dataStart=5;
+      var colMa=1, colTen=2, colDvt=3, colDau=4, colNhap=6, colXuat=8, colCuoi=10, colCuoiGT=11;
+
+      // Auto-detect: tim dong co "Ma hang" o col nao do
+      for(var ri=0;ri<Math.min(raw.length,10);ri++){
+        var rowStr=raw[ri].map(function(c){return String(c||'').toLowerCase();}).join('|');
+        if(rowStr.indexOf('ma hang')>=0 || rowStr.indexOf('mã hàng')>=0
+           || rowStr.indexOf('ma\u0020hang')>=0){
+          // Tim chinh xac col
+          for(var ci=0;ci<raw[ri].length;ci++){
+            var hh=String(raw[ri][ci]||'').toLowerCase().trim();
+            if(hh==='ma hang'||hh==='m\xe3 h\xe0ng'||hh==='ma\u0020hang') colMa=ci;
+            else if(hh==='ten hang'||hh==='t\xean h\xe0ng') colTen=ci;
+            else if(hh==='dvt'||hh==='\u0111vt') colDvt=ci;
+          }
+          dataStart=ri+2; // sau 2-row header
+          break;
+        }
+      }
+
+      var rows=[];
+      for(var di=dataStart;di<raw.length;di++){
+        var r=raw[di];
+        if(!r||!r.length) continue;
+        var ma=String(r[colMa]||'').trim();
+        if(!ma||/^t.{0,5}ng/i.test(ma)) continue;
+        var cuoiSL=Number(r[colCuoi])||0;
+        var cuoiGT=Number(r[colCuoiGT])||0;
+        rows.push({
+          ma_hang  : ma,
+          ten_hang : String(r[colTen]||'').trim(),
+          dvt      : String(r[colDvt]||'cai').trim()||'cai',
+          ton_dau  : Number(r[colDau])||0,
+          nhap_ky  : Number(r[colNhap])||0,
+          xuat_ky  : Number(r[colXuat])||0,
+          ton_cuoi : cuoiSL,
+          gia_von  : cuoiSL>0 ? Math.round(cuoiGT/cuoiSL) : 0,
+        });
+      }
+
+      if(!rows.length){
+        var msg2='Khong doc duoc SP nao ('+raw.length+' dong, start='+dataStart+'). Kiem tra file.';
+        _toast(msg2,'error');
+        if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+msg2+'</span>';
+        return;
+      }
+
+      var sample=rows.slice(0,2).map(function(x){return x.ma_hang+'('+x.ton_cuoi+')';}).join(', ');
+      if(sEl) sEl.innerHTML='<span style="color:var(--cyan);">Doc duoc '+rows.length+' ma hang, ky '+ngay+'. Dang luu...</span>';
+      _toast('Doc duoc '+rows.length+' SP. Dang luu...','ok');
+
       _api()('misa_import_ton_kho',{data:rows,ngay_bao_cao:ngay,replace:true},function(e,d){
-        var s=document.getElementById('tk-status');
         if(!e&&d&&d.ok){
           _toast(d.msg,'ok');
-          if(s) s.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+_esc(d.msg)+'</span>';
+          if(sEl) sEl.innerHTML='<span style="color:var(--green);font-weight:700;">&#x2705; '+d.msg+'</span>';
           _loadSetupStats();
         } else {
-          var err2=(d&&d.error)||'Loi';
-          _toast(err2,'error');
-          if(s) s.innerHTML='<span style="color:var(--red);">&#x274C; '+_esc(err2)+'</span>';
+          var err2=(d&&d.error)||'Loi server';
+          _toast('Loi: '+err2,'error');
+          if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+err2+'</span>';
         }
       });
-    }catch(e2){_toast('Loi doc file: '+e2.message,'error');}
+    }catch(parseErr2){
+      var msg3='Loi doc file: '+parseErr2.message;
+      _toast(msg3,'error');
+      if(sEl) sEl.innerHTML='<span style="color:var(--red);">&#x274C; '+msg3+'</span>';
+    }
   };
   rd.readAsBinaryString(file);
 }

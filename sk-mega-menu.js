@@ -285,12 +285,30 @@
         }, 120);
       });
 
-      // Click on mobile
+      // Click: toggle dropdown + navigate den item dau tien cua group
       if (btn) btn.addEventListener('click', function(e) {
         e.stopPropagation();
         var isOpen = drop.classList.contains('open');
         _closeAllDropdowns();
-        if (!isOpen) { drop.classList.add('open'); g.classList.add('active'); }
+        if (!isOpen) {
+          drop.classList.add('open');
+          g.classList.add('active');
+        } else {
+          // Da mo → click lan 2 = navigate den group (item dau tien)
+          var groupId = g.getAttribute('data-id');
+          if (typeof window.skLoad === 'function') {
+            window.skLoad(groupId);
+          }
+          _closeAllDropdowns();
+        }
+      });
+
+      // Double-click: navigate truc tiep den group page
+      if (btn) btn.addEventListener('dblclick', function(e) {
+        e.stopPropagation();
+        var groupId = g.getAttribute('data-id');
+        if (typeof window.skLoad === 'function') window.skLoad(groupId);
+        _closeAllDropdowns();
       });
     });
 

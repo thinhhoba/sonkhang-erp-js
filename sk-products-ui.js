@@ -122,9 +122,40 @@
     });
 
     _loadKPI();
-    _loadMeta(function(){ _renderTab('products'); });
+    // Dung STATE.curTab (co the da duoc set boi loadDanhMucSP/loadThuongHieu)
+    // truoc khi loadBangGia duoc goi. Default ve 'products'.
+    _loadMeta(function(){
+      var tab = STATE.curTab || 'products';
+      _renderTab(tab);
+      // Highlight dung tab button
+      var tabBtns = document.querySelectorAll('#prod-tabs button');
+      tabBtns.forEach(function(b){
+        var isActive = b.getAttribute('data-tab') === tab;
+        b.style.background    = isActive ? 'rgba(79,111,255,.15)' : 'var(--bg3)';
+        b.style.borderColor   = isActive ? 'rgba(79,111,255,.3)'  : 'var(--border2)';
+        b.style.color         = isActive ? 'var(--accent2)'       : 'var(--text3)';
+      });
+    });
   }
+  // Expose loadBangGia - entry point chinh cho module san pham
   window.loadBangGia   = loadBangGia;
+
+  // Dedicated loaders cho tung tab - KHONG dung querySelectorAll (timing race)
+  // Thay vao do set STATE.curTab truoc, loadBangGia se goi _renderTab dung tab
+  window.loadDanhMucSP = function () {
+    STATE.curTab = 'categories';
+    loadBangGia();
+  };
+  window.loadThuongHieu = function () {
+    STATE.curTab = 'brands';
+    loadBangGia();
+  };
+  window.loadThuocTinh  = function () {
+    STATE.curTab = 'attributes';
+    loadBangGia();
+  };
+
+  // Cac alias giu lai de khong phai doi SK_LOADERS cu
   window.loadChietKhau = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('discounts'); },200); };
   window.loadKhachHang = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('customers'); },200); };
   window.loadTinhGia   = function(){ loadBangGia(); setTimeout(function(){ if(typeof window._spSwitch==='function') window._spSwitch('calc'); },200); };

@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.18.1] 22/03/2026 — Phase 3 complete: filter events, error, loading state
 // [v5.18] 22/03/2026 — Phase 3+4: GAS integration + Chart.js charts
 // [v5.18-p1] 22/03/2026 — Admin Dashboard Phase 1: Layout Shell
  * sk-admin-dashboard.js  SonKhang ERP — Admin Dashboard
@@ -676,26 +677,23 @@ function loadAdminDashboard() {
   ct.innerHTML = _buildHTML();
   _startClock();
   _setStaticInfo();
-  // Phase 3+4: start poll after short delay (wait for window.api to be ready)
+  _admBindFilterEvents();   // Phase 3: month/year filter + reload btn
+
+  // Phase 3+4: start after api ready (800ms grace period)
   setTimeout(function() {
     _admFetchAll(_getAdmMonth(), _getAdmYear());
     _admStartPoll();
   }, 800);
 
-  // Phase 3+4 hooks — no-op placeholders cho bây giờ
-  window.admDownloadReport  = function() {
-    if (typeof window.skToast === 'function') window.skToast('Tính năng Phase 4 — sắp ra mắt', 'ok');
+  // Public hooks
+  window.admDownloadReport = function() {
+    if (typeof window.skToast === 'function')
+      window.skToast('Đang tạo báo cáo...', 'ok');
+    _admFetchAll(_getAdmMonth(), _getAdmYear());
   };
-  window.admViewAll         = function() {
-    if (typeof window.skToast === 'function') window.skToast('Phase 3: đang phát triển...', 'ok');
-  };
-  window.admViewActivity    = function() {
-    if (typeof window.skToast === 'function') window.skToast('Phase 3: hoạt động GAS realtime sắp có', 'ok');
-  };
-  // Phase 3+4 — GAS integration + Charts
-  window.admInjectData = _admInjectData;
-  // Kick off data fetch
-  _admFetchAll(_getAdmMonth(), _getAdmYear());
+  window.admViewAll      = function() { if (typeof window.loadGeneric==='function') window.loadGeneric('bao-cao-bh'); };
+  window.admViewActivity = function() { if (typeof window.loadGeneric==='function') window.loadGeneric('dev-log'); };
+  window.admInjectData   = _admInjectData;
 }
 
 /* ================================================================
@@ -713,9 +711,6 @@ function _getAdmMonth() {
   var el = document.getElementById('adm-month-filter');
   return el ? Number(el.getAttribute('data-month') || new Date().getMonth()+1)
             : new Date().getMonth()+1;
-}
-function _getAdmYear() {
-  return new Date().getFullYear();
 }
 
 /* ── Số định dạng ─────────────────────────────────────────────── */
@@ -1032,6 +1027,221 @@ function _admRenderRiskDonut(kpi) {
   var valEl = document.getElementById('adm-val-risk');
   if (valEl) valEl.style.color = color;
 }
+
+/* ================================================================
+ * PHASE 3 COMPLETION — Filter Events, Sub-text, Error Handling
+ * ================================================================ */
+
+/* ── Month dropdown ─────────────────────────────────────────── */
+var _ADM_MONTHS = [
+  'Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6',
+  'Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12'
+];
+
+/* Bind filter button events sau khi render HTML */
+function _admBindFilterEvents() {
+  var mBtn   = document.getElementById('adm-month-filter');
+  var reload = document.getElementById('adm-reload-btn');
+  var search = document.getElementById('adm-search-inp');
+
+  /* Month filter: click → show dropdown overlay */
+  if (mBtn) {
+    mBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _admShowMonthPicker(mBtn);
+    });
+  }
+
+  /* Reload button */
+  if (reload) {
+    reload.addEventListener('click', function() {
+      reload.style.opacity = '.4';
+      reload.style.transform = 'rotate(180deg)';
+      _admFetchAll(_getAdmMonth(), _getAdmYear());
+      setTimeout(function() {
+        reload.style.opacity = '1';
+        reload.style.transform = 'rotate(0deg)';
+      }, 700);
+    });
+  }
+
+  /* Search: filter activity list locally */
+  if (search) {
+    search.addEventListener('input', function() {
+      var q = search.value.toLowerCase().trim();
+      var items = document.querySelectorAll('#adm-activity-list .adm-activity-item');
+      items.forEach(function(item) {
+        item.style.display = (!q || item.textContent.toLowerCase().indexOf(q) >= 0)
+          ? '' : 'none';
+      });
+    });
+  }
+}
+
+/* Month picker dropdown */
+function _admShowMonthPicker(anchor) {
+  var old = document.getElementById('adm-month-picker');
+  if (old) { old.parentNode.removeChild(old); return; }
+
+  var curMonth = _getAdmMonth();
+  var curYear  = _getAdmYear();
+  var curYearEl = document.getElementById('adm-year-badge');
+  var years    = [];
+  for (var y = curYear; y >= curYear - 3; y--) years.push(y);
+
+  var html = '<div id="adm-month-picker" style="'
+    + 'position:absolute;top:38px;left:0;z-index:500;'
+    + 'background:var(--bg2);border:1px solid var(--border2);'
+    + 'border-radius:14px;padding:14px;box-shadow:0 16px 48px rgba(0,0,0,.6);'
+    + 'width:260px;">'
+    // Year row
+    + '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">'
+    + years.map(function(y) {
+        return '<span data-yr="' + y + '" style="background:'
+          + (y===curYear ? 'var(--accent2)' : 'var(--bg3)')
+          + ';color:' + (y===curYear ? '#fff' : 'var(--text3)')
+          + ';border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">'
+          + y + '</span>';
+      }).join('')
+    + '</div>'
+    // Month grid
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;">'
+    + _ADM_MONTHS.map(function(m, i) {
+        var mo = i + 1;
+        return '<span data-mo="' + mo + '" style="background:'
+          + (mo===curMonth ? 'var(--accent2)' : 'var(--bg3)')
+          + ';color:' + (mo===curMonth ? '#fff' : 'var(--text2)')
+          + ';border-radius:7px;padding:5px 4px;font-size:10px;'
+          + 'font-weight:700;cursor:pointer;text-align:center;">'
+          + m.replace('Tháng ','T') + '</span>';
+      }).join('')
+    + '</div>'
+    + '</div>';
+
+  // Append to anchor parent
+  anchor.style.position = 'relative';
+  anchor.insertAdjacentHTML('afterend', html);
+
+  var picker = document.getElementById('adm-month-picker');
+
+  // Click month
+  picker.querySelectorAll('[data-mo]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var mo = Number(el.getAttribute('data-mo'));
+      var yr = _admSelectedYear || curYear;
+      anchor.setAttribute('data-month', mo);
+      var lbl = document.getElementById('adm-month-label');
+      if (lbl) lbl.textContent = _ADM_MONTHS[mo-1];
+      picker.parentNode.removeChild(picker);
+      _admShowLoadingState();
+      _admFetchAll(mo, yr);
+    });
+  });
+
+  // Click year
+  picker.querySelectorAll('[data-yr]').forEach(function(el) {
+    el.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _admSelectedYear = Number(el.getAttribute('data-yr'));
+      // Highlight year
+      picker.querySelectorAll('[data-yr]').forEach(function(y) {
+        y.style.background = Number(y.getAttribute('data-yr'))===_admSelectedYear
+          ? 'var(--accent2)' : 'var(--bg3)';
+        y.style.color = Number(y.getAttribute('data-yr'))===_admSelectedYear
+          ? '#fff' : 'var(--text3)';
+      });
+    });
+  });
+
+  // Close on outside click
+  setTimeout(function() {
+    document.addEventListener('click', function _closePicker() {
+      var p = document.getElementById('adm-month-picker');
+      if (p) p.parentNode.removeChild(p);
+      document.removeEventListener('click', _closePicker);
+    });
+  }, 0);
+}
+
+var _admSelectedYear = new Date().getFullYear();
+
+function _getAdmYear() { return _admSelectedYear; }
+
+/* ── Loading state: shimmer trở lại khi fetch ─────────────────── */
+function _admShowLoadingState() {
+  // Cards
+  var cardIds = ['adm-val-doanhthu','adm-val-donhang','adm-val-congviec','adm-val-sanpham'];
+  cardIds.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<span class="adm-skel" style="width:80px;height:26px;'
+      + 'background:rgba(255,255,255,.2);animation:adm-shimmer 1.5s infinite;'
+      + 'display:inline-block;border-radius:4px;"></span>';
+  });
+  // Table totals
+  for (var i=0; i<4; i++) {
+    var el = document.getElementById('adm-row-total-' + i);
+    if (el) el.innerHTML = '<span class="adm-skel" style="width:55px;'
+      + 'display:inline-block;border-radius:4px;"></span>';
+  }
+}
+
+/* ── Card sub-text update (Hoàn thành: X, Hết hàng: X) ──────── */
+function _admBindCardSubs(sales, wh, kpi) {
+  // Tìm các .adm-card-footer spans để update
+  var footers = document.querySelectorAll('#sk-admin-dash .adm-card-footer');
+  var subs = [
+    sales ? '+' + (((sales.stats||{}).growth)||0).toFixed(1) + '% so kỳ trước' : '--',
+    sales ? 'Hoàn thành: ' + _admFmt((sales.stats||{}).so_don_hoan_thanh||0) : '--',
+    wh    ? 'Hết hàng: ' + _admFmt(wh.het_hang||0) : '--',
+    kpi   ? 'Đánh giá: ' + _admFmt((kpi.summary||{}).tong_nv||0) + ' NV' : '--',
+  ];
+  footers.forEach(function(footer, i) {
+    if (subs[i]) {
+      var span = footer.querySelector('span');
+      // Chỉ update text sau clock icon
+      var spans = footer.querySelectorAll('span');
+      if (spans.length > 0) {
+        // Lấy span cuối — text content
+        var last = spans[spans.length - 1];
+        if (last && !last.querySelector('svg')) last.textContent = subs[i];
+      }
+    }
+  });
+}
+
+/* ── Error state khi GAS fail ────────────────────────────────── */
+function _admShowError(msg) {
+  var el = document.getElementById('adm-activity-list');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--red);">'
+    + '<div style="font-size:24px;margin-bottom:8px;">&#x26A0;</div>'
+    + '<div style="font-size:12px;font-weight:700;">Lỗi kết nối GAS</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-top:4px;">' + _e(msg||'') + '</div>'
+    + '<button onclick="_admFetchAll(_getAdmMonth(),_getAdmYear())" '
+      + 'style="margin-top:12px;background:var(--accent2);border:none;color:#fff;'
+      + 'border-radius:8px;padding:7px 16px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">'
+      + '&#x21BA; Thử lại</button>'
+    + '</div>';
+}
+
+/* ── Override _admBindAll để thêm sub-text + error ──────────── */
+var _admBindAllOrig = _admBindAll;
+_admBindAll = function(R) {
+  _admBindAllOrig(R);
+  _admBindCardSubs(R.sales, R.wh, R.kpi);
+  // Nếu tất cả null → show error
+  if (!R.sales && !R.wh && !R.kpi && !R.revenue && !R.notif) {
+    _admShowError('Không nhận được dữ liệu từ GAS. Kiểm tra kết nối.');
+  }
+};
+
+/* ── Override _admFetchAll để thêm loading state ─────────────── */
+var _admFetchAllOrig = _admFetchAll;
+_admFetchAll = function(month, year) {
+  _admShowLoadingState();
+  _admFetchAllOrig(month, year);
+};
 
 /* ── Export ──────────────────────────────────────────────────── */
 window.loadAdminDashboard = loadAdminDashboard;

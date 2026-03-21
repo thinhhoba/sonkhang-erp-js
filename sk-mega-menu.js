@@ -864,7 +864,8 @@
     nav.id = 'sk-bottom-nav';
 
     var items = [
-      { id:'dashboard',    icon:'⊞', label:'Dashboard' },
+      { id:'dashboard',       icon:'⊞',           label:'Dashboard'        },
+      { id:'admin-dashboard', icon:'&#x1F4CA;',    label:'Admin Dashboard'  },
       { id:'don-hang',     icon:'🛒', label:'Đơn hàng'  },
       { id:'nhan-su',      icon:'👔', label:'Nhân sự'   },
       { id:'phuong-tien',  icon:'🚛', label:'Kho vận'   },

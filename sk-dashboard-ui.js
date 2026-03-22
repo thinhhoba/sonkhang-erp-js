@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.29] 22/03/2026 — Changelog+Masterplan2.0+Dashboard Merge+Internal Portal
  * sk-dashboard-ui.js  SonKhang ERP v5.16
  * Dashboard tong hop: KPI cards + charts doanh thu + don hang + kho
  *
@@ -39,12 +40,15 @@ var STATUS_LABEL = {
 
 // ── Main loader ───────────────────────────────────────────────────
 function loadDashboard() {
+  // [v5.29] UNIFIED DASHBOARD — role-aware
+  var role = '';
+  try { var s=localStorage.getItem('sk_session_data'); if(s) role=JSON.parse(s).role||''; } catch(e){}
+  if (['admin','manager'].indexOf(role) > -1 && typeof window.loadAdminDashboard === 'function') {
+    window.loadAdminDashboard();
+    return;
+  }
   var ct = _ct(); if (!ct) return;
-
-  // Render skeleton
   ct.innerHTML = _buildSkeleton();
-
-  // Load Chart.js nếu chưa có
   _ensureChartJs(function() {
     _fetchAll();
     _startPoll();
@@ -550,6 +554,8 @@ function _bindDashEvents() {
 }
 
 // ── Export ────────────────────────────────────────────────────────
-window.loadDashboard = loadDashboard;
+window.loadDashboard      = loadDashboard;
+// [v5.29] admin-dashboard redirect sang unified dashboard
+window.loadAdminDashboardAlias = loadDashboard;
 
 })();

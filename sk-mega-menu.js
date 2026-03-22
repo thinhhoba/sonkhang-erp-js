@@ -1,4 +1,5 @@
 function buildMegaMenu() {
+// [v5.30] 22/03/2026 — Portal v2.0 + Profile Sync + Social Edit/Delete + Notif/TG
 // [v5.29] 22/03/2026 — Changelog+Masterplan2.0+Dashboard Merge+Internal Portal
 // [v5.27] 22/03/2026 — Navbar Redesign: Premium dark glassmorphism
     if (document.getElementById('sk-mega-nav')) return;
@@ -153,12 +154,12 @@ function buildMegaMenu() {
     {
       id: 'nhan-su', label: 'Nhân sự', icon: '&#x1F454;', color: '#00d68f',
       items: [
+        { id:'cong-noi-bo',   icon:'&#x1F310;', label:'Cổng nội bộ',   desc:'Feed · Chat · Danh bạ · Cá nhân',       done:true  },
         { id:'nhan-su',      icon:'&#x1F464;', label:'Hồ sơ NV',      desc:'Thông tin · hợp đồng · tài liệu',       done:true  },
         { id:'cham-cong-v2', icon:'&#x23F0;',  label:'Chấm công',     desc:'Ca sáng/chiều · OT · nghỉ phép',         done:true  },
         { id:'bang-luong',   icon:'&#x1F4B5;', label:'Bảng lương',    desc:'Tính lương · phụ cấp · phiếu',           done:true  },
         { id:'kpi',          icon:'&#x1F3AF;', label:'KPI',           desc:'Mục tiêu · kết quả · xu hướng',          done:true  },
         { id:'tuyen-dung',   icon:'&#x1F50D;', label:'Tuyển dụng',    desc:'Pipeline Kanban · ứng viên',              done:true  },
-        { id:'cong-noi-bo',   icon:'&#x1F3E2;', label:'Cổng nội bộ',      desc:'Feed · Chat · Danh bạ · Cá nhân',       done:true  },
         { id:'workflow',     icon:'&#x2705;',  label:'Quy trình',     desc:'Đề xuất · phê duyệt · lịch sử',          done:true  },
         { id:'bao-cao-ns',   icon:'&#x1F4CB;', label:'Báo cáo NS',    desc:'Nhân sự · biểu đồ · tổng hợp',          done:true  },
       ]

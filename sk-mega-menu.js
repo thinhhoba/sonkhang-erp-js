@@ -90,100 +90,100 @@ function buildMegaMenu() {
     {
       id: 'tong-quan', label: 'Tổng quan', icon: '&#x1F4CA;', color: '#4f6fff',
       items: [
-        { id:'dashboard',       icon:'&#x26E7;',  label:'Dashboard',        desc:'KPI · Charts · Doanh thu · Realtime',     done:true  },
-        { id:'dev-log',         icon:'&#x1F4D3;', label:'DevLog & Masterplan', desc:'Changelog · Tiến độ · Ghi nhận',       done:true  },
+        { id:'dashboard',  icon:'&#x26E7;',  label:'Dashboard',         desc:'KPI · Charts · Doanh thu · Hoạt động',    done:true  },
+        { id:'dev-log',    icon:'&#x1F4D3;', label:'DevLog & Masterplan',desc:'Changelog · Tiến độ · Lỗi đã fix',        done:true  },
       ]
     },
     /* ── 2. BÁN HÀNG ───────────────────────────────────── */
     {
-      id: 'ban-hang', label: 'Bán hàng', icon: '&#x1F6D2;', color: '#4f6fff',
+      id: 'ban-hang', label: 'Bán hàng', icon: '&#x1F6D2;', color: '#ff6b6b',
       items: [
-        { id:'don-hang',    icon:'&#x1F4CB;', label:'Đơn hàng',      desc:'9 trạng thái · tạo nhanh · Sapo sync',    done:true  },
-        { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hàng',     desc:'Lệnh giao · tài xế · xe tự động',         done:true  },
-        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hóa đơn VAT',   desc:'Xuất HD · thuế · hạch toán kép',          done:true  },
-        { id:'tra-hang',    icon:'&#x21A9;',  label:'Trả hàng RMA',  desc:'Yêu cầu · kiểm hàng · hoàn tiền',         done:true  },
-        { id:'chiet-khau',  icon:'&#x1F4B9;', label:'Chiết khấu KM', desc:'%, VND · nhóm KH · thời gian',             done:true  },
-        { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tính giá bán',  desc:'Margin · VAT · giá sỉ/lẻ',                done:true  },
-        { id:'sapo-sync',   icon:'&#x1F504;', label:'Sapo Sync',     desc:'Đơn hàng · sản phẩm · realtime sync',     done:true  },
-        { id:'bao-cao-bh',  icon:'&#x1F4CA;', label:'Báo cáo BH',    desc:'Doanh thu · SP bán chạy · hoa hồng',      done:true  },
+        { id:'don-hang',    icon:'&#x1F4CB;', label:'Đơn hàng',       desc:'9 trạng thái · tạo nhanh · timeline',      done:true  },
+        { id:'hoa-don-bh', icon:'&#x1F9FE;', label:'Hóa đơn VAT',    desc:'Xuất HD · thuế · hạch toán MISA',          done:true  },
+        { id:'tra-hang',    icon:'&#x21A9;',  label:'Trả hàng RMA',   desc:'Yêu cầu · kiểm hàng · hoàn tiền',          done:true  },
+        { id:'chiet-khau',  icon:'&#x1F4B9;', label:'Chiết khấu KM',  desc:'%, VND · nhóm KH · thời gian',             done:true  },
+        { id:'tinh-gia',    icon:'&#x1F9EE;', label:'Tính giá bán',   desc:'Margin · VAT · giá sỉ/lẻ',                 done:true  },
+        { id:'sapo-sync',   icon:'&#x1F504;', label:'Sapo Sync',      desc:'Đơn hàng · sản phẩm · realtime',           done:true  },
+        { id:'bao-cao-bh',  icon:'&#x1F4CA;', label:'Báo cáo BH',     desc:'Doanh thu · SP bán chạy · hoa hồng',       done:true  },
       ]
     },
     /* ── 3. SẢN PHẨM ───────────────────────────────────── */
     {
       id: 'san-pham', label: 'Sản phẩm', icon: '&#x1F4E6;', color: '#00d68f',
       items: [
-        { id:'bang-gia',    icon:'&#x1F4B2;', label:'Bảng giá SP',   desc:'Sản phẩm · ảnh · mã vạch · biến thể',    done:true  },
-        { id:'danh-muc',    icon:'&#x1F333;', label:'Danh mục',      desc:'Cây phân cấp · drag-drop · filter',        done:true  },
-        { id:'thuong-hieu', icon:'&#x1F3F7;', label:'Thương hiệu',   desc:'Brand · logo · quốc gia',                 done:true  },
-        { id:'thuoc-tinh',  icon:'&#x1F9E9;', label:'Thuộc tính',    desc:'Màu · size · chất liệu · price tier',     done:true  },
+        { id:'bang-gia',    icon:'&#x1F4B2;', label:'Bảng giá SP',    desc:'Sản phẩm · ảnh · mã vạch · biến thể',     done:true  },
+        { id:'danh-muc',    icon:'&#x1F333;', label:'Danh mục',       desc:'Cây phân cấp · drag-drop · SEO',           done:true  },
+        { id:'thuong-hieu', icon:'&#x1F3F7;', label:'Thương hiệu',    desc:'Brand · logo · quốc gia',                  done:true  },
+        { id:'thuoc-tinh',  icon:'&#x1F9E9;', label:'Thuộc tính',     desc:'Màu · size · chất liệu · filter',          done:true  },
       ]
     },
     /* ── 4. CRM ────────────────────────────────────────── */
     {
-      id: 'crm', label: 'CRM', icon: '&#x1F465;', color: '#00d68f',
+      id: 'crm', label: 'CRM', icon: '&#x1F465;', color: '#a855f7',
       items: [
-        { id:'crm-khach-hang', icon:'&#x1F465;', label:'Khách hàng',     desc:'Danh sách · lịch sử mua · nhóm KH',   done:true  },
-        { id:'crm-loyalty',    icon:'&#x2B50;',  label:'Loyalty / Hạng', desc:'Bronze/Silver/Gold/Diamond · điểm TL', done:true  },
-        { id:'crm-rfm',        icon:'&#x1F4CA;', label:'Phân tích RFM',  desc:'Recency · Frequency · Monetary',       done:true  },
-        { id:'crm-hop-dong',   icon:'&#x1F4CB;', label:'Hợp đồng',       desc:'Mẫu HĐ · Workflow · File scan',         done:true  },
-        { id:'crm-bao-cao',    icon:'&#x1F4C8;', label:'Báo cáo CRM',    desc:'Top KH · Nợ · Điểm · RFM segments',    done:true  },
+        { id:'crm-khach-hang', icon:'&#x1F465;', label:'Khách hàng',    desc:'Danh sách · lịch sử mua · phân khúc',    done:true  },
+        { id:'crm-loyalty',    icon:'&#x2B50;',  label:'Loyalty / Hạng',desc:'Bronze/Silver/Gold/Diamond · điểm',       done:true  },
+        { id:'crm-rfm',        icon:'&#x1F4CA;', label:'Phân tích RFM', desc:'Recency · Frequency · Monetary',          done:true  },
+        { id:'crm-hop-dong',   icon:'&#x1F4CB;', label:'Hợp đồng KH',   desc:'Mẫu HĐ · Workflow · Ký · Hết hạn',      done:true  },
+        { id:'crm-bao-cao',    icon:'&#x1F4C8;', label:'Báo cáo CRM',   desc:'Top KH · Nợ · Điểm · Hành vi',           done:true  },
       ]
     },
     /* ── 5. MUA HÀNG ───────────────────────────────────── */
     {
-      id: 'mua-hang', label: 'Mua hàng', icon: '&#x1F4E6;', color: '#06d6d6',
+      id: 'mua-hang', label: 'Mua hàng', icon: '&#x1F4E6;', color: '#f59e0b',
       items: [
-        { id:'nha-cung-cap', icon:'&#x1F3ED;', label:'Nhà cung cấp',    desc:'CRUD · nhóm · hạn mức tín dụng',       done:true  },
-        { id:'po-list',      icon:'&#x1F4C4;', label:'Lệnh mua (PO)',   desc:'Tạo · duyệt · theo dõi trạng thái',    done:true  },
-        { id:'nhap-kho',     icon:'&#x1F4E5;', label:'Nhập kho',        desc:'Từ PO · kiểm đếm · cập nhật tồn',     done:true  },
-        { id:'hop-dong-ncc', icon:'&#x1F4CB;', label:'Hợp đồng NCC',    desc:'Tạo · ký · theo dõi hiệu lực',         done:true  },
-        { id:'bao-cao-mh',   icon:'&#x1F4CA;', label:'Báo cáo MH',      desc:'Chi phí · NCC · tồn kho nhập',         done:true  },
+        { id:'nha-cung-cap', icon:'&#x1F3ED;', label:'Nhà cung cấp',  desc:'CRUD · nhóm · hạn mức · đánh giá',        done:true  },
+        { id:'po-list',      icon:'&#x1F4C4;', label:'Lệnh mua (PO)', desc:'Tạo · duyệt · theo dõi trạng thái',        done:true  },
+        { id:'nhap-kho-po',  icon:'&#x1F4E5;', label:'Nhập kho',      desc:'Từ PO · kiểm đếm · cập nhật tồn',         done:true  },
+        { id:'hop-dong-ncc', icon:'&#x1F4CB;', label:'Hợp đồng NCC',  desc:'Tạo · ký · theo dõi hiệu lực',             done:true  },
+        { id:'bao-cao-mh',   icon:'&#x1F4CA;', label:'Báo cáo MH',    desc:'Chi phí · NCC · tồn kho nhập',             done:true  },
       ]
     },
     /* ── 6. KHO VẬN ────────────────────────────────────── */
     {
-      id: 'kho-van', label: 'Kho vận', icon: '&#x1F3ED;', color: '#fbbf24',
+      id: 'kho-van', label: 'Kho vận', icon: '&#x1F69A;', color: '#06b6d4',
       items: [
-        { id:'ton-kho',     icon:'&#x1F4CA;', label:'Tồn kho',       desc:'Số lượng · lô hàng · cảnh báo min',     done:true  },
-        { id:'xuat-kho',    icon:'&#x1F4E4;', label:'Xuất kho',      desc:'Phiếu xuất · trừ tồn · LS xuất',        done:true  },
-        { id:'nhap-kho',    icon:'&#x1F4E5;', label:'Nhập kho / PO', desc:'Từ PO · kiểm đếm · cập nhật',           done:true  },
-        { id:'phuong-tien', icon:'&#x1F69B;', label:'Phương tiện',   desc:'Đăng ký · điều phối · xăng dầu',        done:true  },
-        { id:'bao-cao-kv',  icon:'&#x1F4C8;', label:'Báo cáo Kho',   desc:'Tồn kho · cảnh báo · biến động',        done:true  },
+        { id:'giao-hang',   icon:'&#x1F69A;', label:'Giao hàng',      desc:'Lệnh giao · Google Maps · Chi phí KT',     done:true  },
+        { id:'fulfillment', icon:'&#x1F4E6;', label:'Fulfillment',     desc:'Pick → Pack → Ship · QR · Tài xế',         done:true  },
+        { id:'ton-kho',     icon:'&#x1F4CA;', label:'Tồn kho',        desc:'Số lượng · lô hàng · cảnh báo thiếu',      done:true  },
+        { id:'xuat-kho',    icon:'&#x1F4E4;', label:'Xuất kho',       desc:'Phiếu xuất · trừ tồn · lịch sử',           done:true  },
+        { id:'nhap-kho',    icon:'&#x1F4E5;', label:'Nhập kho / PO',  desc:'Từ PO · kiểm đếm · cập nhật tồn',         done:true  },
+        { id:'phuong-tien', icon:'&#x1F69B;', label:'Phương tiện',    desc:'Đăng ký · điều phối · xăng · lịch trình',  done:true  },
+        { id:'bao-cao-kv',  icon:'&#x1F4C8;', label:'Báo cáo Kho',    desc:'Tồn kho · cảnh báo · biến động',           done:true  },
       ]
     },
     /* ── 7. NHÂN SỰ ────────────────────────────────────── */
     {
-      id: 'nhan-su', label: 'Nhân sự', icon: '&#x1F454;', color: '#00d68f',
+      id: 'nhan-su', label: 'Nhân sự', icon: '&#x1F454;', color: '#10b981',
       items: [
-        { id:'cong-noi-bo',   icon:'&#x1F310;', label:'Cổng nội bộ',   desc:'Feed · Chat · Danh bạ · Cá nhân',       done:true  },
-        { id:'nhan-su',      icon:'&#x1F464;', label:'Hồ sơ NV',      desc:'Thông tin · hợp đồng · tài liệu',       done:true  },
-        { id:'cham-cong-v2', icon:'&#x23F0;',  label:'Chấm công',     desc:'Ca sáng/chiều · OT · nghỉ phép',         done:true  },
-        { id:'bang-luong',   icon:'&#x1F4B5;', label:'Bảng lương',    desc:'Tính lương · phụ cấp · phiếu',           done:true  },
-        { id:'kpi',          icon:'&#x1F3AF;', label:'KPI',           desc:'Mục tiêu · kết quả · xu hướng',          done:true  },
-        { id:'tuyen-dung',   icon:'&#x1F50D;', label:'Tuyển dụng',    desc:'Pipeline Kanban · ứng viên',              done:true  },
-        { id:'workflow',     icon:'&#x2705;',  label:'Quy trình',     desc:'Đề xuất · phê duyệt · lịch sử',          done:true  },
-        { id:'bao-cao-ns',   icon:'&#x1F4CB;', label:'Báo cáo NS',    desc:'Nhân sự · biểu đồ · tổng hợp',          done:true  },
+        { id:'cong-noi-bo',   icon:'&#x1F310;', label:'Cổng nội bộ',   desc:'Feed · Chat · Danh bạ · Cá nhân',        done:true  },
+        { id:'nhan-su',       icon:'&#x1F464;', label:'Hồ sơ NV',      desc:'Thông tin · hợp đồng · tài liệu',         done:true  },
+        { id:'cham-cong-v2',  icon:'&#x23F0;',  label:'Chấm công',     desc:'Ca sáng/chiều · OT · nghỉ phép',          done:true  },
+        { id:'bang-luong',    icon:'&#x1F4B5;', label:'Bảng lương',    desc:'Tính lương · phụ cấp · phiếu',            done:true  },
+        { id:'kpi',           icon:'&#x1F3AF;', label:'KPI',           desc:'Mục tiêu · kết quả · xu hướng',           done:true  },
+        { id:'tuyen-dung',    icon:'&#x1F50D;', label:'Tuyển dụng',    desc:'Pipeline Kanban · ứng viên',               done:true  },
+        { id:'workflow',      icon:'&#x2705;',  label:'Quy trình',     desc:'Đề xuất · phê duyệt · lịch sử',           done:true  },
+        { id:'bao-cao-ns',    icon:'&#x1F4CB;', label:'Báo cáo NS',    desc:'Nhân sự · biểu đồ · tổng hợp',           done:true  },
       ]
     },
     /* ── 8. TÀI CHÍNH ──────────────────────────────────── */
     {
-      id: 'tai-chinh', label: 'Tài chính', icon: '&#x1F4B0;', color: '#ff4d6d',
+      id: 'tai-chinh', label: 'Tài chính', icon: '&#x1F4B0;', color: '#f59e0b',
       items: [
-        { id:'so-quy',      icon:'&#x1F4B5;', label:'Sổ quỹ',        desc:'Thu chi · số dư · đối soát',              done:true  },
-        { id:'cong-no',     icon:'&#x1F4B3;', label:'Công nợ',       desc:'KH/NCC · hạn TT · nhắc nợ',               done:true  },
-        { id:'ke-toan',     icon:'&#x1F4D2;', label:'Kế toán TK',    desc:'Sổ cái TK 111/131/331 · bút toán',        done:true  },
-        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hóa đơn VAT',   desc:'Xuất HD · thuế · hạch toán kép',          done:true  },
-        { id:'bao-cao-tc',  icon:'&#x1F4CA;', label:'Báo cáo TC',    desc:'P&L · doanh thu · chi phí',                done:true  },
+        { id:'so-quy',      icon:'&#x1F4B5;', label:'Sổ quỹ',        desc:'Thu chi · số dư · đối soát · in phiếu',   done:true  },
+        { id:'cong-no',     icon:'&#x1F4B3;', label:'Công nợ',       desc:'KH/NCC · hạn TT · nhắc nợ · aging',       done:true  },
+        { id:'ke-toan',     icon:'&#x1F4D2;', label:'Kế toán TK',    desc:'Sổ cái TK · Bảng CĐPS · Cân đối KT',      done:true  },
+        { id:'hoa-don-vat', icon:'&#x1F9FE;', label:'Hóa đơn VAT',   desc:'Xuất HD · thuế · hạch toán MISA',          done:true  },
+        { id:'bao-cao-tc',  icon:'&#x1F4CA;', label:'Báo cáo TC',    desc:'P&L · doanh thu · chi phí · dòng tiền',   done:true  },
       ]
     },
     /* ── 9. QUẢN TRỊ ───────────────────────────────────── */
     {
       id: 'quan-tri', label: 'Quản trị', icon: '&#x2699;', color: '#a78bfa',
       items: [
-        { id:'admin-panel',      icon:'&#x1F511;', label:'Phân quyền',     desc:'Users · roles · RBAC phân quyền',     admin:true,  done:true },
-        { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',   desc:'Liên kết tài khoản với nhân viên',    admin:true,  done:true },
-        { id:'account-settings', icon:'&#x1F464;', label:'Cài đặt TK',     desc:'Mật khẩu · thông tin cá nhân',        admin:false, done:true },
-        { id:'ca-nhan',          icon:'&#x1F4CB;', label:'Hồ sơ cá nhân',  desc:'Xem lương · chấm công · KPI',         admin:false, done:true },
+        { id:'admin-panel',      icon:'&#x1F511;', label:'Phân quyền',    desc:'Users · roles · RBAC · invite',         done:true  },
+        { id:'link-user-nv',     icon:'&#x1F517;', label:'Link User-NV',  desc:'Liên kết tài khoản với hồ sơ NV',       done:true  },
+        { id:'account-settings', icon:'&#x1F464;', label:'Cài đặt TK',    desc:'Mật khẩu · thông tin cá nhân',          done:true  },
       ]
     },
   ];
@@ -258,6 +258,9 @@ function buildMegaMenu() {
     'crm-rfm'        : 'crm-rfm',
     'crm-hop-dong'   : 'crm-hop-dong',
     'crm-bao-cao'    : 'crm-bao-cao',
+    'nhap-kho-po'    : 'nhap-kho',
+    'giao-hang'      : 'giao-hang',
+    'fulfillment'    : 'fulfillment',
     'nhan-su'        : 'nhan-su',
     'ke-toan'        : 'ke-toan',
     'nhap-kho'       : 'nhap-kho',

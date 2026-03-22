@@ -136,6 +136,7 @@ function buildMegaMenu() {
         { id:'nha-cung-cap', icon:'&#x1F3ED;', label:'Nhà cung cấp',    desc:'CRUD · nhóm · hạn mức tín dụng',       done:true  },
         { id:'po-list',      icon:'&#x1F4C4;', label:'Lệnh mua (PO)',   desc:'Tạo · duyệt · theo dõi trạng thái',    done:true  },
         { id:'nhap-kho',     icon:'&#x1F4E5;', label:'Nhập kho',        desc:'Từ PO · kiểm đếm · cập nhật tồn',     done:true  },
+        { id:'hop-dong-ncc', icon:'&#x1F4CB;', label:'Hợp đồng NCC',    desc:'Tạo · ký · theo dõi hiệu lực',         done:true  },
         { id:'bao-cao-mh',   icon:'&#x1F4CA;', label:'Báo cáo MH',      desc:'Chi phí · NCC · tồn kho nhập',         done:true  },
       ]
     },

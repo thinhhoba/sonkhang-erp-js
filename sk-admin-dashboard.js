@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.26.1] 22/03/2026 — Fix: _admFetchAll ReferenceError, activity empty state
 // [v5.20] 22/03/2026 — Performance: CacheService + SWR + generateSummary
 // [v5.18.2] 22/03/2026 — Bug fixes: reload-btn HTML, month label, chart loader
 // [v5.18.1] 22/03/2026 — Phase 3 complete: filter events, error, loading state
@@ -821,7 +822,15 @@ function _admBindActivity(notif) {
   var el = document.getElementById('adm-activity-list');
   if (!el) return;
   var items = notif ? (notif.data || []) : [];
-  if (!items.length) return; // giữ placeholder nếu rỗng
+  // [v5.26.1 FIX] Hiện empty state thay vì giữ error placeholder
+  if (!items.length) {
+    el.innerHTML = '<div style="text-align:center;padding:28px 16px;color:var(--text3,#64748b);">'
+      + '<div style="font-size:28px;margin-bottom:8px;">&#x1F4CB;</div>'
+      + '<div style="font-size:12px;font-weight:700;">Chưa có hoạt động nào</div>'
+      + '<div style="font-size:10px;margin-top:4px;">Dữ liệu sẽ xuất hiện khi có thông báo mới</div>'
+    + '</div>';
+    return;
+  }
 
   var colors = ['#ff7043','#43a047','#1976d2','#8e24aa','#00acc1','#f57c00'];
 
@@ -1225,7 +1234,7 @@ function _admShowError(msg) {
     + '<div style="font-size:24px;margin-bottom:8px;">&#x26A0;</div>'
     + '<div style="font-size:12px;font-weight:700;">Lỗi kết nối GAS</div>'
     + '<div style="font-size:10px;color:var(--text3);margin-top:4px;">' + _e(msg||'') + '</div>'
-    + '<button onclick="_admFetchAll(_getAdmMonth(),_getAdmYear())" '
+    + '<button onclick="window._admFetchAll&&window._admFetchAll()" '
       + 'style="margin-top:12px;background:var(--accent2);border:none;color:#fff;'
       + 'border-radius:8px;padding:7px 16px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">'
       + '&#x21BA; Thử lại</button>'
@@ -1390,5 +1399,11 @@ var _admFetchAllPerf = function(month, year) {
 window.loadAdminDashboard = loadAdminDashboard;
 window.loadDashboardAdmin = loadAdminDashboard;
 window.fetchDashboardData = fetchDashboardData; // Masterplan API
+
+// [v5.26.1 FIX] Expose hàm dùng trong onclick HTML strings (IIFE scope leak)
+window._admFetchAll  = function(m,y){ _admFetchAll(m||_getAdmMonth(),y||_getAdmYear()); };
+window._getAdmMonth  = _getAdmMonth;
+window._getAdmYear   = _getAdmYear;
+window._admStartPoll = _admStartPoll;
 
 })();

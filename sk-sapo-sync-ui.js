@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.24] 22/03/2026 — Fix: doPost null-safety, sapoSyncOrdersOnly, GAS diagnostics
 // [v5.23.2] 22/03/2026 — Fix: GAS timeout, SAPO_TOKEN key mismatch, config form UI
 // [v5.23] 22/03/2026 — Sapo Full Sync: pagination all modules, batch UI
  * sk-sapo-sync-ui.js  SonKhang ERP v5.4.0
@@ -492,7 +493,7 @@
     var btn = document.getElementById('ss-manual-btn');
     if (btn) { btn.disabled=true; btn.textContent='Dang sync...'; }
     var apiF = _api(); if (!apiF) return;
-    apiF('sapo_manual_sync', {}, function(e,d){
+    apiF('sapo_sync_orders_only', {}, function(e,d){  // [v5.24] nhẹ, không timeout
       if (btn) { btn.disabled=false; btn.innerHTML='&#x25B6; Sync ngay'; }
       if (e||!d||!d.ok) { _toast((d&&d.error)||'Loi sync','error'); return; }
       _toast(d.msg + ' (' + d.last_sync_count + ' don)', 'ok');

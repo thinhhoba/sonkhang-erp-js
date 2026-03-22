@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.29] 22/03/2026 — Changelog+Masterplan2.0+Dashboard Merge+Internal Portal
  * sk-devlog-ui.js  SonKhang ERP v5.14
  * Realtime Changelog & Masterplan UI
  * Tabs: Changelog | Masterplan | Ghi nhan
@@ -24,10 +25,47 @@ var C = {
   system  : ['rgba(160,174,192,.1)','rgba(160,174,192,.3)','var(--text3)'],
   test    : ['rgba(0,182,255,.1)','rgba(0,182,255,.3)','var(--cyan)'],
 };
+
+// [v5.29] Static changelog — fallback khi DevLog GAS sheet chua co data
+var _STATIC_CHANGELOG = [
+  {id:'cl-0',version:'v5.28',title:'Profile + Social + Messaging + Auth Gate + Router',type:'feature',body:'skLoad() check session TRƯỚC khi load bất kỳ module nào',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-1',version:'v5.27',title:'Navbar Redesign: Premium Dark UI',type:'refactor',body:'Background: rgba(10,12,24,0.96) + blur(24px) saturate(2) — deep glassmorphism',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-2',version:'v5.26.1',title:'Fix: ReferenceError + Activity empty state',type:'bugfix',body:'Nguyên nhân**: `_admFetchAll` và `_getAdmMonth` định nghĩa TRONG IIFE (private scope)',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-3',version:'v5.26',title:'Smart Search: 4-Layer Engine',type:'feature',body:'Input rỗng → hiện lịch sử tìm kiếm + top modules',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-4',version:'v5.25.1',title:'Fix: TypeError null.innerHTML (sk-sales-orders.js)',type:'bugfix',body:'BUG-1: _soModal() thiếu className**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-5',version:'v5.25',title:'Order Fulfillment: 5 Phases',type:'feature',body:'Sales_OrderFulfillment.gs (692L): Logic 5 phases day du',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-6',version:'v5.24',title:'Dứt điểm GAS_EMPTY_RESPONSE + Sapo Sync',type:'feature',body:'FIX A — doPost null-safety (Auth.gs)**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-7',version:'v5.23.2',title:'Fix: GAS_EMPTY_RESPONSE + SAPO_TOKEN key mismatch',type:'bugfix',body:'Nguyên nhân: `sapoManualSync()` → `sapoAutoSync()` → `sapoAutoSyncFull()`',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-8',version:'v5.23.1',title:'Fix: SyntaxError Unexpected end of JSON input',type:'bugfix',body:'RC-1 (PRIMARY) — sk-ui.js api() không handle non-JSON response**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-9',version:'v5.23',title:'Sapo Full Sync: No-Limit Pagination',type:'feature',body:'sapoSyncCustomers: ✅ while(true) limit=250',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-10',version:'v5.22.1',title:'Bug Fix: STATE ReferenceError + 404',type:'bugfix',body:'BUG 1: `STATE is not defined`**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-11',version:'v5.21.2',title:'Theme version fix',type:'bugfix',body:'sonkhang-erp-theme.xml: title v4.0→v5.21, topbar badge v5.12→v5.21',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-12',version:'v5.21.1',title:'Menubar Redesign + Alias Fix',type:'bugfix',body:'RC-1**: SK_LABELS duplicate keys → label bị overwrite → **deduplicated 62 keys sạch**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-13',version:'v5.22',title:'Telegram Bot Integration',type:'feature',body:'Luồng 1 — GAS → Telegram (Push)**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-14',version:'v5.21',title:'N+1 Batch Fix Top 5 Hot Paths',type:'bugfix',body:'Impact:** -200ms cho write operations (updateStatus, saveUser, syncSapo)',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-15',version:'v5.20',title:'Ép xung hiệu năng Phase 1+2',type:'feature',body:'`_skCache(key, fn, ttl)`: CacheService cache-aside, TTL 900s, 100KB guard',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-16',version:'v5.19',title:'Sổ cái TK 111/131/331',type:'feature',body:'`TK_CATALOG`: 9 tài khoản kế toán',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-17',version:'v5.18.2',title:'Admin Dashboard Bug Fixes',type:'bugfix',body:'Root causes phân tích và fix:**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-18',version:'v5.18.1',title:'deploy — 22/03/2026 — Deploy Production Guide',type:'deploy',body:'NEW: DEPLOY_PRODUCTION_v5.18.md** (343L)',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-19',version:'v5.18.1',title:'Admin Dashboard Phase 3 Complete',type:'feature',body:'Phase 3 fixes & completion:**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-20',version:'v5.18',title:'Admin Dashboard Phase 3+4 Complete',type:'feature',body:'Phase 3: GAS Integration** (+340L vào sk-admin-dashboard.js)',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-21',version:'v5.18',title:'p1 — 22/03/2026 — Admin Dashboard Phase 1',type:'feature',body:'Layout (inspired by Adminty):**',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-22',version:'v5.17',title:'Kho vận Nâng cao',type:'feature',body:'`_updateStockFromPO`: loại bỏ N+1 GAS queries, delegate sang `whNhapKhoFromPO`',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-23',version:'v5.16',title:'Dashboard Tổng Hợp',type:'feature',body:'NEW: sk-dashboard-ui.js** (555L)',author:'system',created_at:'2026-03-22T00:00:00.000Z'},
+    {id:'cl-24',version:'v5.15',title:'Notification Bell Realtime',type:'feature',body:'sk-mega-menu.js** — +326 lines (754L → 1080L):',author:'system',created_at:'2026-03-22T00:00:00.000Z'}
+];
+
 var TYPE_ICON = {
   feature:'&#x2728;', bugfix:'&#x1F41B;', deploy:'&#x1F680;',
   hotfix:'&#x1F525;', refactor:'&#x1F527;', system:'&#x2699;', test:'&#x1F9EA;',
 };
+
+// [v5.29] Aliases for v5.28 types
+C.tinh_nang = C.feature;
+C.sua_loi   = C.bugfix;
+C.cai_tien  = C.refactor;
+
+
 var TYPE_LABEL = {
   feature:'Tinh nang', bugfix:'Sua loi', deploy:'Deploy',
   hotfix:'Hotfix', refactor:'Cai tien', system:'He thong', test:'Kiem thu',
@@ -196,7 +234,8 @@ function _renderChangelog() {
     + '</div>';
 
   // Timeline entries
-  var entries = ST.entries;
+  // [v5.29] Fallback sang static CHANGELOG data khi GAS sheet rỗng
+  var entries = ST.entries && ST.entries.length ? ST.entries : _STATIC_CHANGELOG;
   var timelineHtml = '';
   if (!entries.length) {
     timelineHtml = '<div style="text-align:center;padding:48px;color:var(--text3);">'
@@ -302,83 +341,148 @@ function _renderChangelog() {
 // ══════════════════════════════════════════════════════════════════
 function _renderMasterplan() {
   var el = document.getElementById('dl-body'); if (!el) return;
-  var modules = ST.masterplan;
 
-  if (!modules.length) {
-    el.innerHTML = '<div style="text-align:center;padding:48px;color:var(--text3);">'
-      + '<div style="font-size:32px;">&#x1F4CA;</div>'
-      + '<div style="font-weight:700;margin-top:12px;">Chua co du lieu masterplan</div>'
-      + '</div>';
-    return;
-  }
+  // Static phases data v5.29 — override từ GAS nếu có
+  var STATIC_PHASES = [
+    {id:'ban-hang',   label:'Ban hang',      pct:92, color:'#4f6fff', subtitle:'7 modules',         status:'on_dinh',  note:'Order Fulfillment 5 phases v5.25'},
+    {id:'san-pham',   label:'San pham',      pct:80, color:'#00d68f', subtitle:'Categories, brands',status:'on_dinh',  note:'BangGia, DanhMuc, ThuocTinh'},
+    {id:'crm',        label:'CRM',           pct:95, color:'#a855f7', subtitle:'5 modules',         status:'hoan_chinh',note:'Loyalty, RFM, HopDong'},
+    {id:'hop-dong',   label:'Hop dong',      pct:85, color:'#06b6d4', subtitle:'Template, workflow',status:'on_dinh',  note:'Mau hop dong, E-sign'},
+    {id:'mua-hang',   label:'Mua hang',      pct:85, color:'#f59e0b', subtitle:'NCC, PO workflow',  status:'on_dinh',  note:'NhaCC, PO, NhapKho'},
+    {id:'kho-van',    label:'Kho van',       pct:82, color:'#06d6d6', subtitle:'TonKho, Xuat/Nhap', status:'on_dinh',  note:'Smart routing v5.25'},
+    {id:'nhan-su',    label:'Nhan su',       pct:90, color:'#10b981', subtitle:'HRM 8 modules',     status:'on_dinh',  note:'Cham cong v2, Bang luong, KPI'},
+    {id:'tai-chinh',  label:'Tai chinh',     pct:90, color:'#f59e0b', subtitle:'SoQuy, CongNo',     status:'on_dinh',  note:'ButToan, SoCai TK'},
+    {id:'sapo-sync',  label:'Sapo Sync',     pct:95, color:'#4f6fff', subtitle:'14 modules',        status:'hoan_chinh',note:'Full sync paginated v5.23'},
+    {id:'misa-vat',   label:'Misa VAT',      pct:88, color:'#34d399', subtitle:'Invoice Editor',    status:'on_dinh',  note:'Export Excel, VAT draft'},
+    {id:'fulfillment',label:'Fulfillment',   pct:85, color:'#ff6b6b', subtitle:'5 phases',          status:'on_dinh',  note:'Kho+DieuXe+Mobile+MISA v5.25'},
+    {id:'social',     label:'Social+Msg',    pct:80, color:'#a855f7', subtitle:'Portal noi bo',     status:'on_dinh',  note:'Feed, DM, Profile v5.28-29'},
+    {id:'search',     label:'Smart Search',  pct:90, color:'#06d6d6', subtitle:'4-layer engine',    status:'on_dinh',  note:'Fuzzy+Bigram+Live v5.26'},
+    {id:'infra',      label:'Infrastructure',pct:90, color:'#818cf8', subtitle:'Auth, RBAC',        status:'on_dinh',  note:'AuthGate+HashRouter v5.28'},
+    {id:'quan-tri',   label:'Quan tri',      pct:80, color:'#64748b', subtitle:'Auth, settings',    status:'on_dinh',  note:'Admin panel, user mgmt'},
+  ];
 
-  // Overall progress
-  var avg = Math.round(modules.reduce(function(s,m){ return s + m.progress; }, 0) / modules.length);
-  var overallColor = avg >= 90 ? 'var(--green)' : avg >= 70 ? 'var(--accent2)' : 'var(--yellow)';
+  // Merge với GAS data nếu có
+  var phases = ST.masterplan && ST.masterplan.length
+    ? (function(){
+        var map = {};
+        STATIC_PHASES.forEach(function(p){ map[p.id]=p; });
+        ST.masterplan.forEach(function(m){ if(map[m.id]){ map[m.id].pct=m.progress||map[m.id].pct; map[m.id].status=m.status||map[m.id].status; } });
+        return STATIC_PHASES;
+      })()
+    : STATIC_PHASES;
 
-  var html = ''
-    // Overall KPI
-    + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px;display:flex;align-items:center;gap:20px;">'
-      + '<div style="text-align:center;flex-shrink:0;">'
-        + '<div style="font-size:40px;font-weight:900;color:' + overallColor + ';">' + avg + '%</div>'
-        + '<div style="font-size:11px;color:var(--text3);margin-top:2px;">Tong tien do</div>'
-      + '</div>'
-      + '<div style="flex:1;">'
-        + '<div style="height:12px;background:var(--bg3);border-radius:6px;overflow:hidden;">'
-          + '<div style="height:100%;width:' + avg + '%;background:' + overallColor + ';border-radius:6px;transition:width .6s;"></div>'
-        + '</div>'
-        + '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--text3);">'
-          + '<span>' + modules.length + ' phan he</span>'
-          + '<span>ERP v5.14</span>'
-        + '</div>'
-      + '</div>'
-    + '</div>'
-    // Module grid
-    + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">';
+  var total  = phases.length;
+  var overall= Math.round(phases.reduce(function(s,p){return s+p.pct;},0)/total);
+  var done   = phases.filter(function(p){return p.pct>=95;}).length;
 
-  modules.forEach(function(m) {
-    var pct = Number(m.progress) || 0;
-    var color = pct >= 90 ? 'var(--green)' : pct >= 75 ? 'var(--accent2)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
-    var statusLabel = pct >= 95 ? 'Hoan chinh' : pct >= 80 ? 'On dinh' : pct >= 60 ? 'Dang phat trien' : 'Khoi dau';
-    var statusBg    = pct >= 95 ? 'rgba(0,214,143,.15)' : pct >= 80 ? 'rgba(79,111,255,.12)' : pct >= 60 ? 'rgba(251,191,36,.12)' : 'rgba(255,77,109,.12)';
+  var STATUS_STYLE = {
+    'hoan_chinh': 'background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.25);',
+    'on_dinh'   : 'background:rgba(79,111,255,.12);color:#818cf8;border:1px solid rgba(79,111,255,.2);',
+    'dang_phat_trien': 'background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.2);',
+    'tam_dung'  : 'background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.2);',
+  };
+  var STATUS_LABEL = {
+    'hoan_chinh':'Hoan chinh','on_dinh':'On dinh',
+    'dang_phat_trien':'Dang dev','tam_dung':'Tam dung',
+  };
 
-    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;">'
-      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">'
-        + '<div>'
-          + '<div style="font-size:13px;font-weight:900;color:var(--text);">' + _esc(m.label) + '</div>'
-          + '<div style="font-size:11px;color:var(--text3);margin-top:2px;">' + _esc(m.note || '') + '</div>'
-        + '</div>'
-        + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
-          + '<span style="font-size:18px;font-weight:900;color:' + color + ';">' + pct + '%</span>'
-          + '<span style="background:' + statusBg + ';color:' + color + ';border-radius:4px;padding:1px 7px;font-size:9px;font-weight:800;">' + statusLabel + '</span>'
-        + '</div>'
-      + '</div>'
-      + '<div style="height:8px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:8px;">'
-        + '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;transition:width .5s;"></div>'
-      + '</div>'
-      // Edit button (admin)
-      + (_isAdmin() ? '<div style="display:flex;justify-content:flex-end;margin-top:6px;">'
-          + '<button class="mp-edit-btn" data-module="' + _esc(m.module) + '" data-pct="' + pct + '" data-label="' + _esc(m.label) + '" data-note="' + _esc(m.note||'') + '" '
-          + 'style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;">&#x270F; Sua</button>'
-        + '</div>' : '')
-      + (m.updated_at ? '<div style="font-size:9px;color:var(--text3);margin-top:4px;">Cap nhat: ' + _fmtAgo(m.updated_at) + '</div>' : '')
+  var html = '';
+
+  // ── Header stats row ──────────────────────────────────────────
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:20px;">';
+  var stats4 = [
+    {val: overall+'%',   lbl:'Tong tien do', clr:'#818cf8'},
+    {val: total,         lbl:'Phan he',       clr:'#34d399'},
+    {val: done,          lbl:'Hoan chinh',    clr:'#fbbf24'},
+    {val: 'v5.29',       lbl:'Version',       clr:'#06d6d6'},
+  ];
+  stats4.forEach(function(s) {
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;">'
+      + '<div style="font-size:22px;font-weight:900;color:'+s.clr+';font-family:monospace;">'+s.val+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-top:3px;">'+s.lbl+'</div>'
     + '</div>';
   });
-
   html += '</div>';
+
+  // ── Overall progress bar ──────────────────────────────────────
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:20px;">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+      + '<span style="font-size:32px;font-weight:900;color:#818cf8;font-family:monospace;">'+overall+'%</span>'
+      + '<div style="text-align:right;">'
+        + '<div style="font-size:11px;color:var(--text3);">'+total+' phan he</div>'
+        + '<div style="font-size:10px;color:var(--text3);">ERP '+('v5.29')+'</div>'
+      + '</div>'
+    + '</div>'
+    + '<div style="height:8px;background:var(--bg3);border-radius:99px;overflow:hidden;">'
+      + '<div style="height:100%;width:'+overall+'%;background:linear-gradient(90deg,#4f6fff,#06d6d6);border-radius:99px;transition:width .6s;"></div>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-top:6px;">Cap nhat: 22/03/2026</div>'
+  + '</div>';
+
+  // ── Phase cards grid ──────────────────────────────────────────
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">';
+  phases.forEach(function(p) {
+    var st = STATUS_STYLE[p.status] || STATUS_STYLE.on_dinh;
+    var sl = STATUS_LABEL[p.status] || p.status;
+    html += '<div style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid '+p.color+';border-radius:12px;padding:14px;">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+        + '<span style="font-size:13px;font-weight:800;color:var(--text);">'+p.label+'</span>'
+        + '<span style="font-size:18px;font-weight:900;color:'+p.color+';font-family:monospace;">'+p.pct+'%</span>'
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-bottom:8px;">'+p.subtitle+'</div>'
+      + '<div style="height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;margin-bottom:8px;">'
+        + '<div style="height:100%;width:'+p.pct+'%;background:'+p.color+';border-radius:99px;"></div>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+        + '<span style="font-size:9px;color:var(--text3);">'+p.note+'</span>'
+        + '<span style="'+st+'border-radius:5px;padding:1px 7px;font-size:9px;font-weight:800;">'+sl+'</span>'
+      + '</div>'
+    + '</div>';
+  });
+  html += '</div>';
+
+  // ── Error log ─────────────────────────────────────────────────
+  var ERRORS = [
+    ['GAS_EMPTY_RESPONSE','doPost result=undefined','Null-safety guard','v5.24'],
+    ['_admFetchAll not defined','IIFE private scope, onclick global','window.* expose','v5.26.1'],
+    ['sk-modal-box null','_soModal no className','box.className+guard','v5.25.1'],
+    ['STATE not defined','IIFE scope leak','_soPage local var','v5.22.1'],
+    ['sapoAutoSync timeout','sapoAutoSyncFull >6min in req','Trigger rieng','v5.23.2'],
+    ['SAPO_TOKEN mismatch','save TOKEN read API_KEY','Alias SAPO_API_KEY','v5.23.2'],
+    ['Unexpected JSON','r.json() khi HTML response','r.text()->JSON.parse','v5.23.1'],
+    ['infinite recursion','_getSS() tu goi chinh no','fallback openById','v5.14'],
+    ['hashchange loop','skLoad ghi hash, hash trigger skLoad','_skRouterLock','v5.28'],
+  ];
+
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px;">'
+    + '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Loi da xu ly ('+ERRORS.length+')</div>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    + '<thead><tr style="border-bottom:2px solid var(--border);">'
+    + '<th style="padding:6px 8px;text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;">Loi</th>'
+    + '<th style="padding:6px 8px;text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;">Nguyen nhan</th>'
+    + '<th style="padding:6px 8px;text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;">Fix</th>'
+    + '<th style="padding:6px 8px;text-align:center;color:var(--text3);font-size:10px;text-transform:uppercase;">Ver</th>'
+    + '</tr></thead><tbody>';
+  ERRORS.forEach(function(row, i) {
+    html += '<tr style="border-bottom:1px solid var(--border);'+(i%2===1?'background:var(--bg3);':'')+'">'
+      + '<td style="padding:6px 8px;color:var(--red);font-weight:700;">'+row[0]+'</td>'
+      + '<td style="padding:6px 8px;color:var(--text3);">'+row[1]+'</td>'
+      + '<td style="padding:6px 8px;color:var(--green);font-size:10px;">'+row[2]+'</td>'
+      + '<td style="padding:6px 8px;text-align:center;"><span style="background:rgba(79,111,255,.12);color:#818cf8;border-radius:5px;padding:1px 7px;font-weight:800;font-size:10px;">'+row[3]+'</span></td>'
+    + '</tr>';
+  });
+  html += '</tbody></table></div>';
+
   el.innerHTML = html;
 
-  // Edit progress buttons
-  el.querySelectorAll('.mp-edit-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      _showEditProgressModal(
-        btn.getAttribute('data-module'),
-        btn.getAttribute('data-label'),
-        parseInt(btn.getAttribute('data-pct')),
-        btn.getAttribute('data-note')
-      );
-    });
-  });
+  // Admin: nút cập nhật tiến độ
+  if (_isAdmin()) {
+    var editBtn = document.createElement('button');
+    editBtn.style.cssText = 'margin-top:14px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:9px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+    editBtn.textContent = 'Cap nhat tien do';
+    editBtn.addEventListener('click', function(){ _renderMasterplanEdit(phases); });
+    el.appendChild(editBtn);
+  }
 }
 
 function _showEditProgressModal(module, label, pct, note) {

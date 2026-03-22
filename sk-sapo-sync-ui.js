@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.23] 22/03/2026 — Sapo Full Sync: pagination all modules, batch UI
  * sk-sapo-sync-ui.js  SonKhang ERP v5.4.0
  * UI: Sapo Realtime Sync Dashboard
  * 21/03/2026 — 0 non-ASCII, DOM API
@@ -43,6 +44,27 @@
       + '<button id="ss-stop-trigger" style="background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);color:var(--red);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25A0; Tat trigger</button>'
       + '<button id="ss-debug-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F50D; Debug</button>'
       + '</div></div>'
+
+      // [v5.23] Full Sync Modules panel
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">'
+          + '<div style="font-size:13px;font-weight:900;">&#x1F5C4; Full Sync Module</div>'
+          + '<div id="ss-full-status" style="font-size:10px;color:var(--text3);">Chua sync</div>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;">'
+          + _buildModuleBtn('ss-btn-customers',   '&#x1F465;', 'Khach hang',      'sapo_sync_customers')
+          + _buildModuleBtn('ss-btn-inventory',   '&#x1F4CA;', 'Ton kho',          'sapo_sync_inventory')
+          + _buildModuleBtn('ss-btn-suppliers',   '&#x1F3ED;', 'Nha cung cap',    'sapo_sync_suppliers')
+          + _buildModuleBtn('ss-btn-po',          '&#x1F4C4;', 'Purchase Orders', 'sapo_sync_purchase_orders')
+          + _buildModuleBtn('ss-btn-price',       '&#x1F4B2;', 'Bang gia',         'sapo_sync_price_rules')
+          + _buildModuleBtn('ss-btn-fulfill',     '&#x1F69A;', 'Fulfillments',    'sapo_sync_fulfillments')
+          + _buildModuleBtn('ss-btn-ledger',      '&#x1F4D2;', 'Ledger Entries',  'sapo_sync_ledger')
+          + _buildModuleBtn('ss-btn-transfers',   '&#x1F504;', 'Transfers',        'sapo_sync_transfers')
+          + _buildModuleBtn('ss-btn-draft',       '&#x1F4DD;', 'Draft Orders',    'sapo_sync_draft_orders')
+          + _buildModuleBtn('ss-btn-locations',   '&#x1F4CD;', 'Locations',        'sapo_sync_locations')
+        + '</div>'
+        + '<div id="ss-module-log" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:20px;"></div>'
+      + '</div>'
 
       // Recent synced
       + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;">'
@@ -488,5 +510,56 @@
       });
     }, 30000);
   }, 5000); // Bat dau sau 5s khi page load xong
+
+
+  // ── [v5.23] Module Sync helpers ──────────────────────────────────
+
+  function _buildModuleBtn(id, icon, label, route) {
+    return '<button id="' + id + '" data-route="' + route + '" '
+      + 'style="display:flex;align-items:center;gap:8px;background:var(--bg3);'
+      + 'border:1px solid var(--border2);color:var(--text2);border-radius:10px;'
+      + 'padding:9px 12px;font-size:11px;font-weight:700;cursor:pointer;'
+      + 'font-family:inherit;transition:all .15s;text-align:left;">'
+      + '<span style="font-size:16px;">' + icon + '</span>'
+      + '<span>' + label + '</span>'
+      + '</button>';
+  }
+
+  function _bindModuleButtons() {
+    document.querySelectorAll('[data-route]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var route = btn.getAttribute('data-route');
+        var label = btn.textContent.trim().slice(0,30);
+        var apiF  = _api(); if (!apiF) return;
+        var log   = document.getElementById('ss-module-log');
+        var fstEl = document.getElementById('ss-full-status');
+
+        btn.disabled = true;
+        btn.style.opacity = '.5';
+        if (log)   log.textContent = 'Dang dong bo: ' + label + '...';
+        if (fstEl) fstEl.textContent = 'Dang chay...';
+
+        apiF(route, {}, function(e, d) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          var msg = (!e && d && d.ok)
+            ? ('✅ ' + label + ': ' + (d.msg || 'Xong'))
+            : ('❌ ' + label + ': ' + ((d && d.error) || 'Loi'));
+          if (log)   log.textContent = msg;
+          if (fstEl) fstEl.textContent = new Date().toLocaleTimeString('vi-VN');
+          if (typeof window.skToast === 'function') {
+            window.skToast(msg, (!e && d && d.ok) ? 'ok' : 'error');
+          }
+        });
+      });
+    });
+  }
+
+  // Patch loadSapoSync để gọi _bindModuleButtons sau render
+  var _origLoadSapoSync = window.loadSapoSync;
+  window.loadSapoSync = function() {
+    if (typeof _origLoadSapoSync === 'function') _origLoadSapoSync();
+    setTimeout(_bindModuleButtons, 100);
+  };
 
 })();

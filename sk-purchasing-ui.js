@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.32] 22/03/2026 — Tab Hop dong NCC trong phan he Mua hang
  * sk-purchasing-ui.js  SonKhang ERP v5.5.0
  * Module Mua hang (Purchasing):
  *   - Danh sach NCC (Nha cung cap)
@@ -57,7 +58,7 @@
       +'<div id="po-kpi" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;"></div>'
       // Tabs
       +'<div style="display:flex;gap:4px;margin-bottom:16px;">'
-      +[['po','&#x1F4CB; Lenh mua'],['ncc','&#x1F3ED; Nha cung cap'],['report','&#x1F4CA; Bao cao']].map(function(t,i){
+      +[['po','&#x1F4CB; Lenh mua'],['ncc','&#x1F3ED; Nha cung cap'],['hop-dong-ncc','&#x1F4CB; Hop dong NCC'],['report','&#x1F4CA; Bao cao']].map(function(t,i){
         return '<button data-mh-tab="'+t[0]+'" style="border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;'+(i===0?'background:rgba(79,111,255,.15);border:1px solid rgba(79,111,255,.3);color:var(--accent2);':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);')+'">'+t[1]+'</button>';
       }).join('')
       +'</div>'
@@ -108,9 +109,86 @@
 
   // ── Tabs ─────────────────────────────────────────────────────────
   function _renderTab(tab) {
-    if (tab==='po')     _renderPOList();
-    else if (tab==='ncc')    _renderNCCList();
-    else if (tab==='report') _renderReport();
+    if      (tab==='po')           _renderPOList();
+    else if (tab==='ncc')          _renderNCCList();
+    else if (tab==='hop-dong-ncc') _renderNccContracts();
+    else if (tab==='report')       _renderReport();
+  }
+
+  function _renderNccContracts() {
+    var el = document.getElementById('mh-body'); if (!el) return;
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:4px 0;';
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;';
+    hdr.innerHTML = '<div>'
+      + '<div style="font-size:14px;font-weight:900;color:var(--text);">&#x1F4CB; Hop dong Nha cung cap</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:2px;">Quan ly toan bo hop dong voi cac nha cung cap</div>'
+    + '</div>';
+    var btnWrap = document.createElement('div');
+    btnWrap.style.cssText = 'display:flex;gap:8px;';
+    var btnNew = document.createElement('button');
+    btnNew.innerHTML = '&#x2795; Tao HD NCC';
+    btnNew.style.cssText = 'background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);color:#f59e0b;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+    btnNew.addEventListener('click', function() {
+      if (typeof window._ctNew === 'function') window._ctNew('nha_cung_cap');
+      else if (typeof window.loadHopDong === 'function') window.loadHopDong();
+    });
+    var btnFull = document.createElement('button');
+    btnFull.innerHTML = '&#x1F4CB; Quan ly day du';
+    btnFull.style.cssText = 'background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+    btnFull.addEventListener('click', function() {
+      if (typeof window.skLoad === 'function') window.skLoad('hop-dong');
+    });
+    btnWrap.appendChild(btnNew); btnWrap.appendChild(btnFull);
+    hdr.appendChild(btnWrap);
+    wrap.appendChild(hdr);
+
+    var listEl = document.createElement('div');
+    listEl.id  = 'ncc-ct-list';
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai...</div>';
+    wrap.appendChild(listEl);
+    el.innerHTML = ''; el.appendChild(wrap);
+
+    var apiF = _api(); if (!apiF) return;
+    apiF('contract_get_list', { loai:'nha_cung_cap', limit:10, page:1 }, function(e, d) {
+      if (!listEl.parentNode) return;
+      var rows = (!e && d && d.ok) ? d.data : [];
+      if (!rows.length) {
+        listEl.innerHTML = '<div style="text-align:center;padding:36px;color:var(--text3);">'
+          + '<div style="font-size:28px;margin-bottom:8px;">&#x1F4CB;</div>'
+          + '<div style="font-size:13px;font-weight:700;">Chua co hop dong voi NCC</div>'
+        + '</div>';
+        return;
+      }
+      var SL = { soan_thao:'Soan thao', cho_duyet:'Cho duyet', gui_kh:'Gui NCC', da_ky:'Da ky', hieu_luc:'Hieu luc', het_han:'Het han' };
+      listEl.innerHTML = '<div style="border-radius:12px;border:1px solid var(--border);overflow:auto;">'
+        + '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+        + '<thead><tr style="background:var(--bg3);">'
+          + '<th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">So HD</th>'
+          + '<th style="padding:8px 12px;text-align:left;">Ten NCC</th>'
+          + '<th style="padding:8px 12px;text-align:right;">Gia tri</th>'
+          + '<th style="padding:8px 12px;text-align:center;">Den ngay</th>'
+          + '<th style="padding:8px 12px;text-align:center;">Trang thai</th>'
+        + '</tr></thead><tbody>'
+        + rows.map(function(c) {
+            var isExp = c.den_ngay && (new Date(c.den_ngay) - new Date()) / 86400000 < 30;
+            return '<tr style="border-top:1px solid var(--border);">'
+              + '<td style="padding:8px 12px;font-weight:700;color:var(--accent2);">' + (c.so_hd||'') + '</td>'
+              + '<td style="padding:8px 12px;">' + (c.ten_ncc||c.ten_kh||'') + '</td>'
+              + '<td style="padding:8px 12px;text-align:right;color:var(--green);font-weight:700;">'
+                + (c.gia_tri ? (Math.round(c.gia_tri/1000000)+'tr') : '') + '</td>'
+              + '<td style="padding:8px 12px;text-align:center;font-size:11px;color:'
+                + (isExp ? '#f87171' : 'var(--text3)') + ';">' + (c.den_ngay||'') + '</td>'
+              + '<td style="padding:8px 12px;text-align:center;">'
+                + '<span style="background:rgba(52,211,153,.12);color:#34d399;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:800;">'
+                + (SL[c.trang_thai]||c.trang_thai||'') + '</span></td>'
+            + '</tr>';
+          }).join('')
+        + '</tbody></table></div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right;">' + (d.total||rows.length) + ' hop dong NCC</div>';
+    });
   }
 
   // ── PO List ─────────────────────────────────────────────────────

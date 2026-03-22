@@ -355,10 +355,6 @@ function _cnSendReminder(){
   });
 }
 
-window.loadTaiChinh = loadTaiChinh;
-window.loadKeToan   = loadTaiChinh;
-window.loadKeToán   = loadTaiChinh;
-
 
 
 // ── Form: Thêm công nợ mới ────────────────────────────────────────

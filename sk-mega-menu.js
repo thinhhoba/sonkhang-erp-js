@@ -1,4 +1,5 @@
 function buildMegaMenu() {
+// [v5.29] 22/03/2026 — Changelog+Masterplan2.0+Dashboard Merge+Internal Portal
 // [v5.27] 22/03/2026 — Navbar Redesign: Premium dark glassmorphism
     if (document.getElementById('sk-mega-nav')) return;
 
@@ -89,11 +90,7 @@ function buildMegaMenu() {
       id: 'tong-quan', label: 'Tổng quan', icon: '&#x1F4CA;', color: '#4f6fff',
       items: [
         { id:'dashboard',       icon:'&#x26E7;',  label:'Dashboard',        desc:'KPI · Charts · Doanh thu · Realtime',     done:true  },
-        { id:'admin-dashboard', icon:'&#x1F4CA;', label:'Admin Dashboard',  desc:'Adminty-style · 4 KPI cards · SWR cache', done:true  },
         { id:'dev-log',         icon:'&#x1F4D3;', label:'DevLog & Masterplan', desc:'Changelog · Tiến độ · Ghi nhận',       done:true  },
-        { id:'ca-nhan',         icon:'&#x1F464;', label:'Trang cá nhân',     desc:'Profile · Avatar · Cài đặt',           done:true  },
-        { id:'mang-xa-hoi',     icon:'&#x1F465;', label:'Mạng xã hội',       desc:'Feed · Bài đăng · Khen thưởng',        done:true  },
-        { id:'tin-nhan',        icon:'&#x1F4AC;', label:'Tin nhắn',           desc:'DM · Nhóm · Thông báo real-time',      done:true  },
       ]
     },
     /* ── 2. BÁN HÀNG ───────────────────────────────────── */
@@ -161,7 +158,7 @@ function buildMegaMenu() {
         { id:'bang-luong',   icon:'&#x1F4B5;', label:'Bảng lương',    desc:'Tính lương · phụ cấp · phiếu',           done:true  },
         { id:'kpi',          icon:'&#x1F3AF;', label:'KPI',           desc:'Mục tiêu · kết quả · xu hướng',          done:true  },
         { id:'tuyen-dung',   icon:'&#x1F50D;', label:'Tuyển dụng',    desc:'Pipeline Kanban · ứng viên',              done:true  },
-        { id:'portal',       icon:'&#x1F4E2;', label:'Cổng nội bộ',   desc:'Thông báo · hỏi đáp',                   done:true  },
+        { id:'cong-noi-bo',   icon:'&#x1F3E2;', label:'Cổng nội bộ',      desc:'Feed · Chat · Danh bạ · Cá nhân',       done:true  },
         { id:'workflow',     icon:'&#x2705;',  label:'Quy trình',     desc:'Đề xuất · phê duyệt · lịch sử',          done:true  },
         { id:'bao-cao-ns',   icon:'&#x1F4CB;', label:'Báo cáo NS',    desc:'Nhân sự · biểu đồ · tổng hợp',          done:true  },
       ]

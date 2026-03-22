@@ -91,6 +91,9 @@ function buildMegaMenu() {
         { id:'dashboard',       icon:'&#x26E7;',  label:'Dashboard',        desc:'KPI · Charts · Doanh thu · Realtime',     done:true  },
         { id:'admin-dashboard', icon:'&#x1F4CA;', label:'Admin Dashboard',  desc:'Adminty-style · 4 KPI cards · SWR cache', done:true  },
         { id:'dev-log',         icon:'&#x1F4D3;', label:'DevLog & Masterplan', desc:'Changelog · Tiến độ · Ghi nhận',       done:true  },
+        { id:'ca-nhan',         icon:'&#x1F464;', label:'Trang cá nhân',     desc:'Profile · Avatar · Cài đặt',           done:true  },
+        { id:'mang-xa-hoi',     icon:'&#x1F465;', label:'Mạng xã hội',       desc:'Feed · Bài đăng · Khen thưởng',        done:true  },
+        { id:'tin-nhan',        icon:'&#x1F4AC;', label:'Tin nhắn',           desc:'DM · Nhóm · Thông báo real-time',      done:true  },
       ]
     },
     /* ── 2. BÁN HÀNG ───────────────────────────────────── */

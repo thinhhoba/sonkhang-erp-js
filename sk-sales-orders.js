@@ -755,14 +755,7 @@ function _soDoInvoice(orderId) {
   }
 
 window.showSalesModal = _soModal;
-window.showSalesModal  = _soModal;
 window.closeSalesModal = _soCloseModal;
-window._soTab = _soTab;
-window._soSearch = _soSearch;
-window._soRefresh = _soRefresh;
-window._soShowSapoConfig = _soShowSapoConfig;
-window._soDetail = _soDetail;
-window._soNewOrder = _soNewOrder;
 window._soAddToCart = _soAddToCart;
 window._soCalcTotal = _soCalcTotal;
 window._soSubmitOrder = _soSubmitOrder;
@@ -771,8 +764,7 @@ window._soChangeStatus = _soChangeStatus;
 window._soRecordPayment = _soRecordPayment;
 window._soDoPayment = _soDoPayment;
 window._soDelivery = _soDelivery;
-window._soDoDelivery = _soDoDelivery;
-window._soCreateInvoice = _soCreateInvoice;
 window._soDoInvoice = _soDoInvoice;
+window.loadDonHang = loadDonHang;
 
 }());

@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.25.1] 22/03/2026 — Fix: sk-modal-box null, race condition guard
 // [v5.22.1] 22/03/2026 — Fix: STATE global → local _soPage
  * sk-sales-orders.js — SonKhang ERP v4.0
  * UI Quan ly Don hang — Tat ca trang thai — Lien ket da phan he
@@ -16,6 +17,8 @@
     ov.id = 'sk-sales-modal';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
     var box = document.createElement('div');
+    // [v5.25.1 FIX] BUG-1: Thêm className để querySelector('.sk-modal-box') không trả null
+    box.className = 'sk-modal-box';
     box.style.cssText = 'background:var(--bg2,#0f1117);border:1px solid var(--border2,#252d40);border-radius:18px;max-height:90vh;overflow-y:auto;width:100%;max-width:'+(size==='lg'?'820px':size==='xl'?'1100px':'560px')+';';
     box.innerHTML = html;
     ov.appendChild(box);
@@ -359,13 +362,24 @@
       + '</tbody></table></div>';
   }
 
+  /* [v5.25.1 FIX] BUG-2: Helper an toàn — trả null nếu modal đã đóng (race condition) */
+  function _getModalBox() {
+    return document.querySelector('.sk-modal-box')
+        || document.querySelector('#sk-sales-modal > div');
+  }
+
   /* ── Order Detail Modal ───────────────────────────────────── */
   function _soDetail(id) {
     _curOrderId = id;
     window.showSalesModal(window.salesLoading('Đang tải chi tiết...'), 'lg');
     var apiF = _api(); if (!apiF) return;
     apiF('sales_get_order_detail', { id:id }, function(e,d) {
-      if (e||!d||!d.ok) { document.querySelector('.sk-modal-box').innerHTML='<div style="padding:24px;color:var(--red);">Lỗi: '+(d&&d.error||e)+'</div>'; return; }
+      if (e||!d||!d.ok) {
+        // [v5.25.1 FIX] BUG-2: guard null — modal có thể đã đóng trước khi callback return
+        var _errBox = _getModalBox();
+        if (_errBox) _errBox.innerHTML='<div style="padding:24px;color:var(--red);">Lỗi: '+_esc(String(d&&d.error||e||'Unknown error'))+'</div>';
+        return;
+      }
       var o = d.order; var items = d.items||[]; var history = d.history||[];
       var col   = (window.ORDER_COLORS||{})[o.trang_thai]||'#6b7a99';
       var label = STATUS_LABEL[o.trang_thai]||o.trang_thai;
@@ -431,7 +445,10 @@
           +'</div>':'')
         + '</div>';
 
-      document.querySelector('.sk-modal-box').innerHTML = html;
+      // [v5.25.1 FIX] BUG-2: guard null — tránh crash nếu modal đóng trong lúc chờ API
+      var _box = _getModalBox();
+      if (!_box) return;  // Modal đã bị đóng bởi user → bỏ qua kết quả
+      _box.innerHTML = html;
     });
   }
   window._soDetail = _soDetail;

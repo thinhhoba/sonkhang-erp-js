@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.23.2] 22/03/2026 — Fix: GAS timeout, SAPO_TOKEN key mismatch, config form UI
 // [v5.23] 22/03/2026 — Sapo Full Sync: pagination all modules, batch UI
  * sk-sapo-sync-ui.js  SonKhang ERP v5.4.0
  * UI: Sapo Realtime Sync Dashboard
@@ -27,6 +28,26 @@
       + '<button id="ss-notify-btn" style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);color:var(--yellow);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F514; Bat thong bao</button>'      + '<button id="ss-manual-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x25B6; Sync ngay</button>'
       + '<button id="ss-reset-btn" style="background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.2);color:var(--red);border-radius:10px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x21BA; Reset</button>'
       + '</div></div>'
+
+      // [v5.23.2] Cấu hình Sapo — nhập Shop + Token
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;">'
+        + '<div style="font-size:13px;font-weight:900;margin-bottom:12px;">&#x2699;&#xFE0F; Cau hinh Sapo</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">'
+          + '<div>'
+            + '<label style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px;">Shop URL</label>'
+            + '<input id="ss-cfg-shop" type="text" placeholder="vd: sonkhang.mysapo.net" autocomplete="off" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;box-sizing:border-box;"/>'
+          + '</div>'
+          + '<div>'
+            + '<label style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px;">API Token</label>'
+            + '<input id="ss-cfg-token" type="password" placeholder="Token tu Sapo Admin" autocomplete="off" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;box-sizing:border-box;"/>'
+          + '</div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+          + '<button id="ss-cfg-save-btn" style="background:var(--accent2);border:none;color:#fff;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F4BE; Luu cau hinh</button>'
+          + '<button id="ss-cfg-test-btn" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F50D; Kiem tra ket noi</button>'
+          + '<span id="ss-cfg-msg" style="font-size:11px;color:var(--text3);"></span>'
+        + '</div>'
+      + '</div>'
 
       // Status card
       + '<div id="ss-status-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;">'
@@ -95,6 +116,49 @@
         notifyBtn.innerHTML = '&#x1F514; Thong bao bat';
       }
     }
+    // [v5.23.2] Config form events
+    var saveBtn = document.getElementById('ss-cfg-save-btn');
+    var testBtn = document.getElementById('ss-cfg-test-btn');
+    var cfgMsg  = document.getElementById('ss-cfg-msg');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        var shop  = (document.getElementById('ss-cfg-shop')  || {}).value || '';
+        var token = (document.getElementById('ss-cfg-token') || {}).value || '';
+        if (!shop || !token) { if (cfgMsg) cfgMsg.textContent = '❌ Nhap day du Shop va Token'; return; }
+        var apiF = _api(); if (!apiF) return;
+        saveBtn.disabled = true; saveBtn.textContent = 'Dang luu...';
+        apiF('sapo_save_config', { shop: shop, token: token }, function(e, d) {
+          saveBtn.disabled = false; saveBtn.textContent = '💾 Luu cau hinh';
+          if (!e && d && d.ok) {
+            if (cfgMsg) cfgMsg.textContent = '✅ ' + (d.msg || 'Da luu: ' + d.shop);
+            _toast('Da luu cau hinh Sapo: ' + (d.shop || shop), 'ok');
+            _loadStatus();
+          } else {
+            if (cfgMsg) cfgMsg.textContent = '❌ ' + ((d && d.error) || 'Loi luu');
+          }
+        });
+      });
+    }
+    if (testBtn) {
+      testBtn.addEventListener('click', function() {
+        var apiF = _api(); if (!apiF) return;
+        testBtn.disabled = true; testBtn.textContent = 'Dang kiem tra...';
+        if (cfgMsg) cfgMsg.textContent = '';
+        apiF('sapo_test', {}, function(e, d) {
+          testBtn.disabled = false; testBtn.textContent = '🔍 Kiem tra ket noi';
+          if (!e && d && d.ok) {
+            var shopName = d.shop_name || d.debug && d.debug.shop || 'OK';
+            if (cfgMsg) cfgMsg.textContent = '✅ Ket noi OK: ' + _esc(shopName);
+            _toast('Sapo ket noi thanh cong: ' + shopName, 'ok');
+          } else {
+            var errMsg = (d && d.error) || 'Ket noi that bai';
+            if (cfgMsg) cfgMsg.textContent = '❌ ' + _esc(errMsg.substring(0, 60));
+            _toast(errMsg, 'error');
+          }
+        });
+      });
+    }
+
     document.getElementById('ss-manual-btn').addEventListener('click', _manualSync);
     // Product sync buttons
     var spBtn = document.getElementById('ss-sync-prod-btn');

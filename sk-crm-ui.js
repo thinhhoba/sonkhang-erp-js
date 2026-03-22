@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.32] 22/03/2026 — _renderContracts upgrade: timeline, filter, expiry warning
  * sk-crm-ui.js  SonKhang ERP v5.5.0
  * Module CRM Khach hang day du:
  *   - Danh sach KH: tim kiem, filter nhom, sort
@@ -740,42 +741,124 @@
 
   // ── Hợp đồng ──────────────────────────────────────────────────
   function _renderContracts() {
-    var el=document.getElementById('crm-list'); if(!el) return;
-    el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">'
-      +'<div style="font-size:13px;font-weight:900;">Hop dong khach hang</div>'
-      +'<button id="ct-new-btn" style="background:rgba(0,214,143,.15);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">+ Them hop dong</button>'
-      +'</div>'
-      +'<div id="ct-list"><div style="text-align:center;padding:24px;color:var(--text3);">Dang tai...</div></div>';
+    var el = document.getElementById('crm-list'); if (!el) return;
 
-    document.getElementById('ct-new-btn').addEventListener('click',function(){ _showContractForm(null); });
-
-    var apiF=_api(); if(!apiF) return;
-    apiF('crm_get_contracts',{},function(e,d){
-      var rows=(!e&&d&&d.ok)?d.data||[]:[];
-      var ctEl=document.getElementById('ct-list'); if(!ctEl) return;
-      if(!rows.length){ctEl.innerHTML='<div style="text-align:center;padding:32px;color:var(--text3);">Chua co hop dong</div>';return;}
-      var html='<div style="border-radius:12px;border:1px solid var(--border);overflow:hidden;">'
-        +'<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-        +'<thead><tr style="background:var(--bg3);">'
-        +'<th style="padding:8px 12px;font-size:10px;font-weight:800;color:var(--text3);text-align:left;">So HD</th>'
-        +'<th style="padding:8px 12px;text-align:left;">Khach hang</th>'
-        +'<th style="padding:8px 12px;text-align:right;">Gia tri</th>'
-        +'<th style="padding:8px 12px;text-align:center;">Het han</th>'
-        +'<th style="padding:8px 12px;text-align:center;">Con lai</th>'
-        +'</tr></thead><tbody>';
-      rows.forEach(function(r){
-        var conLaiColor=r.sap_het?'var(--red)':(r.con_lai_ngay<60?'var(--yellow)':'var(--green)');
-        html+='<tr style="border-top:1px solid var(--border)'+(r.sap_het?';background:rgba(255,77,109,.03)':'')+';">'
-          +'<td style="padding:8px 12px;font-family:monospace;color:var(--accent2);">'+_esc(r.so_hd||'')+'</td>'
-          +'<td style="padding:8px 12px;font-weight:700;">'+_esc(r.ten_kh||r.khach_id||'')+'</td>'
-          +'<td style="padding:8px 12px;text-align:right;font-weight:700;">'+_fmt(r.gia_tri||0)+'</td>'
-          +'<td style="padding:8px 12px;text-align:center;color:var(--text3);">'+_esc(r.den_ngay||'--')+'</td>'
-          +'<td style="padding:8px 12px;text-align:center;font-weight:700;color:'+conLaiColor+';">'+(r.con_lai_ngay>=0?r.con_lai_ngay+'d':'--')+(r.sap_het?' &#x26A0;':'')+'</td>'
-          +'</tr>';
-      });
-      html+='</tbody></table></div>';
-      ctEl.innerHTML=html;
+    // Header
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;';
+    hdr.innerHTML = '<div>'
+      + '<div style="font-size:14px;font-weight:900;color:var(--text);">Hop dong Khach hang</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:2px;">Filter theo khach hang dang chon hoac tat ca</div>'
+    + '</div>';
+    var btnWrap = document.createElement('div');
+    btnWrap.style.cssText = 'display:flex;gap:8px;';
+    var btnNew = document.createElement('button');
+    btnNew.innerHTML = '&#x2795; Tao HD';
+    btnNew.style.cssText = 'background:rgba(0,214,143,.12);border:1px solid rgba(0,214,143,.3);color:var(--green);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+    btnNew.addEventListener('click', function() {
+      if (typeof window._ctNew === 'function') window._ctNew('khach_hang');
+      else if (typeof window.loadHopDong === 'function') window.loadHopDong();
     });
+    var btnFull = document.createElement('button');
+    btnFull.innerHTML = '&#x1F4CB; Quan ly day du';
+    btnFull.style.cssText = 'background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;';
+    btnFull.addEventListener('click', function() {
+      if (typeof window.skLoad === 'function') window.skLoad('hop-dong');
+    });
+    btnWrap.appendChild(btnNew); btnWrap.appendChild(btnFull);
+    hdr.appendChild(btnWrap);
+
+    // Filter bar
+    var filterBar = document.createElement('div');
+    filterBar.style.cssText = 'display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;align-items:center;';
+    filterBar.innerHTML = '<input id="crm-ct-q" type="text" placeholder="Tim so HD, ten khach..." '
+      + 'style="flex:1;min-width:140px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 11px;color:var(--text);font-family:inherit;font-size:12px;">'
+      + '<select id="crm-ct-status" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--text3);font-family:inherit;font-size:11px;">'
+        + '<option value="">Tat ca trang thai</option>'
+        + '<option value="soan_thao">Soan thao</option>'
+        + '<option value="hieu_luc">Hieu luc</option>'
+        + '<option value="het_han">Het han</option>'
+        + '<option value="da_ky">Da ky</option>'
+      + '</select>'
+      + '<button id="crm-ct-search" style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim</button>';
+
+    var listEl = document.createElement('div');
+    listEl.id  = 'crm-ct-list';
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai...</div>';
+
+    el.innerHTML = '';
+    el.appendChild(hdr);
+    el.appendChild(filterBar);
+    el.appendChild(listEl);
+
+    var loadCt = function() {
+      listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai...</div>';
+      var apiF = typeof window.api === 'function' ? window.api : null; if (!apiF) return;
+      apiF('contract_get_list', {
+        loai   : 'khach_hang',
+        q      : (document.getElementById('crm-ct-q')||{}).value||'',
+        status : (document.getElementById('crm-ct-status')||{}).value||'',
+        limit  : 15,
+      }, function(e, d) {
+        if (!listEl.parentNode) return;
+        var rows = (!e && d && d.ok) ? d.data : [];
+        if (!rows.length) {
+          listEl.innerHTML = '<div style="text-align:center;padding:36px;color:var(--text3);">'
+            + '<div style="font-size:28px;margin-bottom:8px;">&#x1F4CB;</div>'
+            + '<div style="font-size:14px;font-weight:700;">Chua co hop dong</div>'
+          + '</div>';
+          return;
+        }
+        var SL = { soan_thao:'Soan thao', cho_duyet:'Cho duyet', gui_kh:'Gui KH', da_ky:'Da ky', hieu_luc:'Hieu luc', het_han:'Het han', huy_bo:'Huy bo', gia_han:'Gia han' };
+        var SC = { soan_thao:'#94a3b8', cho_duyet:'#fbbf24', gui_kh:'#818cf8', da_ky:'#06d6d6', hieu_luc:'#34d399', het_han:'#f87171', huy_bo:'#ef4444', gia_han:'#10b981' };
+        // Workflow steps mini
+        var WF = ['soan_thao','cho_duyet','gui_kh','da_ky','hieu_luc'];
+        listEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;">'
+          + rows.map(function(c) {
+              var stC = SC[c.trang_thai] || '#64748b';
+              var stL = SL[c.trang_thai] || c.trang_thai;
+              var stepIdx = WF.indexOf(c.trang_thai);
+              var isExp = c.den_ngay && (new Date(c.den_ngay) - new Date()) / 86400000 < 30;
+              var wfHtml = '<div style="display:flex;align-items:center;gap:2px;margin-top:8px;">'
+                + WF.map(function(st, i) {
+                    var done = i < stepIdx; var cur = i === stepIdx;
+                    var clr = cur ? 'var(--accent2)' : (done ? '#34d399' : 'var(--border2)');
+                    return '<div style="flex:1;height:4px;background:' + clr + ';border-radius:99px;'
+                      + (i===0?'border-radius:99px 0 0 99px;':(i===WF.length-1?'border-radius:0 99px 99px 0;':'')) + '"></div>';
+                  }).join('')
+              + '</div>'
+              + '<div style="display:flex;justify-content:space-between;margin-top:2px;">'
+                + WF.map(function(st, i) {
+                    var cur = i === stepIdx;
+                    return '<div style="font-size:8px;color:'+(cur?'var(--accent2)':'var(--text3)')+';font-weight:'+(cur?'800':'400')+';text-align:center;flex:1;">'
+                      + (SL[st]||st) + '</div>';
+                  }).join('')
+              + '</div>';
+              return '<div style="background:var(--bg2);border:1px solid '+(isExp?'rgba(248,113,113,.3)':'var(--border)')+';border-radius:12px;padding:13px;">'
+                + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">'
+                  + '<div style="flex:1;">'
+                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">'
+                      + '<span style="font-size:13px;font-weight:800;color:var(--accent2);">' + (c.so_hd||'') + '</span>'
+                      + '<span style="background:' + stC + '18;color:' + stC + ';border-radius:4px;padding:1px 6px;font-size:9px;font-weight:800;">' + stL + '</span>'
+                      + (isExp ? '<span style="background:rgba(248,113,113,.12);color:#f87171;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:800;">&#x23F0; Sap het han</span>' : '')
+                    + '</div>'
+                    + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + (c.ten_kh||'') + '</div>'
+                    + '<div style="font-size:10px;color:var(--text3);margin-top:2px;">'
+                      + (c.gia_tri ? 'Gia tri: ' + Math.round(c.gia_tri/1000000) + 'tr · ' : '')
+                      + (c.den_ngay ? 'Het han: ' + c.den_ngay : '') + '</div>'
+                  + '</div>'
+                + '</div>'
+                + wfHtml
+              + '</div>';
+            }).join('')
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:8px;text-align:right;">' + (d.total||rows.length) + ' hop dong</div>';
+      });
+    };
+
+    filterBar.querySelector('#crm-ct-search').addEventListener('click', loadCt);
+    filterBar.querySelector('#crm-ct-q').addEventListener('keydown', function(e) { if(e.key==='Enter') loadCt(); });
+    loadCt();
   }
 
   function _showContractForm(ct) {

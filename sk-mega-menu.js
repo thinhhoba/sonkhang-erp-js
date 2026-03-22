@@ -1,3 +1,65 @@
+function buildMegaMenu() {
+// [v5.27] 22/03/2026 — Navbar Redesign: Premium dark glassmorphism
+    if (document.getElementById('sk-mega-nav')) return;
+
+    var GROUP_COLORS = {
+      'tong-quan' :['#4f6fff','#06d6d6','rgba(79,111,255,.15)','rgba(79,111,255,.25)'],
+      'ban-hang'  :['#ff6b6b','#ff9a3c','rgba(255,107,107,.15)','rgba(255,107,107,.25)'],
+      'san-pham'  :['#00d68f','#06d6d6','rgba(0,214,143,.15)','rgba(0,214,143,.25)'],
+      'crm'       :['#a855f7','#ec4899','rgba(168,85,247,.15)','rgba(168,85,247,.25)'],
+      'mua-hang'  :['#f59e0b','#ef4444','rgba(245,158,11,.15)','rgba(245,158,11,.25)'],
+      'kho-van'   :['#06b6d4','#4f6fff','rgba(6,182,212,.15)','rgba(6,182,212,.25)'],
+      'nhan-su'   :['#10b981','#a855f7','rgba(16,185,129,.15)','rgba(16,185,129,.25)'],
+      'tai-chinh' :['#f59e0b','#10b981','rgba(245,158,11,.15)','rgba(245,158,11,.25)'],
+      'quan-tri'  :['#64748b','#94a3b8','rgba(100,116,139,.15)','rgba(100,116,139,.25)'],
+    };
+
+    var nav = document.createElement('nav');
+    nav.id = 'sk-mega-nav';
+    nav.setAttribute('role', 'navigation');
+
+    // Brand
+    var brand = '<div class="mmn-brand" onclick="skLoad(\'dashboard\')">'      + '<div class="mmn-logo">SK</div>'      + '<div class="mmn-brand-text">'        + '<div class="mmn-brand-name">SonKhang ERP</div>'        + '<span class="mmn-badge" id="mmn-version-badge">v5.27</span>'      + '</div>'    + '</div>';
+
+    // Menu items
+    var menuHtml = '<div class="mmn-items">';
+    MENU.forEach(function(group) {
+      var gc  = GROUP_COLORS[group.id] || ['#4f6fff','#06d6d6','rgba(79,111,255,.15)','rgba(79,111,255,.25)'];
+      var c1  = gc[0], c2 = gc[1], cbg = gc[2], cbd = gc[3];
+      menuHtml += '<div class="mmn-group" data-gid="' + group.id + '"'
+        + ' style="--gcolor:' + c1 + ';--gcolor2:' + c2
+        + ';--gcolor-bg:' + cbg + ';--gcolor-bd:' + cbd + '">'        + '<button class="mmn-group-btn" data-gid="' + group.id + '">'          + '<span class="mmn-group-icon">' + group.icon + '</span>'          + '<span class="mmn-group-label">' + group.label + '</span>'          + '<span class="mmn-caret">&#x25BE;</span>'        + '</button>'        + '<div class="mmn-dropdown" id="mmd-' + group.id + '">'          + buildDropdown(group, cbg, cbd)         + '</div>'      + '</div>';
+    });
+    menuHtml += '</div>';
+
+    // Right side
+    var right = '<div class="mmn-right">'      + '<button class="mmn-icon-btn" id="mmn-search-btn" title="Tim kiem (Ctrl+K)">'        + '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">'          + '<circle cx="8" cy="8" r="5"/><line x1="13" y1="13" x2="18" y2="18"/>'        + '</svg>'      + '</button>'      + '<button class="mmn-icon-btn" id="mmn-bell-btn" title="Thong bao">'        + '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">'          + '<path d="M10 2a6 6 0 00-6 6v3l-2 2v1h16v-1l-2-2V8a6 6 0 00-6-6zm0 16a2 2 0 01-2-2h4a2 2 0 01-2 2z"/>'        + '</svg>'        + '<span class="mmn-badge-dot" id="mmn-bell-count" style="display:none">0</span>'      + '</button>'      + '<div class="mmn-bell-panel" id="mmn-bell-panel">' + buildBellPanel() + '</div>'      + '<button class="mmn-user-btn" id="mmn-user-btn" onclick="skLoad(\'ca-nhan\')">'        + '<div class="mmn-avatar" id="mmn-avatar">?</div>'        + '<div class="mmn-user-info">'          + '<span class="mmn-username" id="mmn-uname">...</span>'          + '<span class="mmn-role" id="mmn-role">--</span>'        + '</div>'      + '</button>'    + '</div>';
+
+    nav.innerHTML = brand + menuHtml + right;
+
+    // Breadcrumb bar
+    var bc = document.createElement('div');
+    bc.id = 'sk-breadcrumb';
+    bc.innerHTML = '<span class="bc-home" onclick="skLoad(\'dashboard\')">&#x2302; Trang chu</span>';
+
+    // Search overlay
+    var so = document.createElement('div');
+    so.id = 'sk-search-overlay';
+    so.innerHTML = '<div class="sk-search-box">'      + '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--border,#1e293b);">'        + '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--text3);flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'        + '<input id="sk-cmd-input" type="text" placeholder="Tim kiem module, don hang, khach hang... (Ctrl+K)" style="flex:1;background:none;border:none;outline:none;color:var(--text,#e2e8f0);font-size:14px;font-family:inherit;font-weight:500;">'        + '<kbd style="font-family:monospace;font-size:10px;background:var(--bg3,#1a2035);border:1px solid var(--border2,#2a3a55);border-radius:4px;padding:2px 6px;color:var(--text3);">ESC</kbd>'      + '</div>'      + '<div id="sk-cmd-results" style="max-height:420px;overflow-y:auto;"></div>'      + '<div style="display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--border,#1e293b);font-size:10px;color:var(--text3);">'        + '<span><kbd style="background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:monospace;">&#x2191;&#x2193;</kbd> Di chuyen &nbsp;<kbd style="background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:monospace;">Enter</kbd> Chon</span>'        + '<span>SonKhang Smart Search v5.26</span>'      + '</div>'    + '</div>';
+
+    document.body.insertBefore(nav, document.body.firstChild);
+    document.body.insertBefore(bc, nav.nextSibling);
+    document.body.insertBefore(so, bc.nextSibling);
+
+    _bindMenuEvents();
+    _buildSearchIndex();
+    _bindSearchEvents();
+    _bindBellEvents();
+    _updateBellBadge();
+    _startNotifPoll();
+    _updateUserInfo();
+  }
+
 /* ================================================================
 // [v5.26] 22/03/2026 — Smart Search: Fuzzy+Bigram+Live+History+Debounce
 // [v5.21.1] 22/03/2026 — Menubar redesign: 9 groups, MENU_ALIASES, SK_LABELS fix
@@ -220,19 +282,20 @@
     });
   });
 
-  function buildDropdown(group) {
-    var html = '<div class="mmd-inner">';
+  function buildDropdown(group, cbg, cbd) {
+    cbg = cbg || 'rgba(79,111,255,.15)';
+    cbd = cbd || 'rgba(79,111,255,.25)';
+
+    // Dropdown header
+    var html = '<div class="mmd-header" style="--gcolor-bg:' + cbg + ';--gcolor-bd:' + cbd + '">'      + '<div class="mmd-header-icon" style="background:' + cbg + ';">' + (group.icon||'&#x25C6;') + '</div>'      + '<span class="mmd-header-title">' + group.label + '</span>'      + '<span class="mmd-header-count">' + group.items.length + ' chuc nang</span>'    + '</div>';
+
+    html += '<div class="mmd-inner">';
     group.items.forEach(function(item) {
       var statusDot = item.done
-        ? '<span class="mmd-status done" title="Hoan thanh">&#x2713;</span>'
-        : '<span class="mmd-status todo" title="Dang phat trien">&#x25CB;</span>';
-      html += '<div class="mmd-item" data-page="' + item.id + '">'
-        + '<div class="mmd-icon">' + (item.icon || '&#x25C6;') + '</div>'
-        + '<div class="mmd-info">'
-        + '<div class="mmd-label">' + item.label + statusDot + '</div>'
-        + '<div class="mmd-desc">' + item.desc + '</div>'
-        + '</div>'
-        + '</div>';
+        ? '<span class="mmd-status done">&#x2713;</span>'
+        : '';
+      html += '<div class="mmd-item" data-page="' + item.id + '"'
+        + ' style="--gcolor-bg:' + cbg + ';--gcolor-bd:' + cbd + '">'        + '<div class="mmd-icon-wrap">' + (item.icon || '&#x25C6;') + '</div>'        + '<div class="mmd-info">'          + '<div class="mmd-label">' + item.label + statusDot + '</div>'          + '<div class="mmd-desc">' + (item.desc||'') + '</div>'        + '</div>'        + '<span class="mmd-arrow">&#x203A;</span>'      + '</div>';
     });
     html += '</div>';
     return html;
@@ -368,7 +431,32 @@
     });
   }
 
-  function _updateActiveMenu(page) {
+  // [v5.27] _updateUserInfo — hiện role badge dưới tên user
+  function _updateUserInfo() {
+    try {
+      var raw     = localStorage.getItem('sk_session_data');
+      var session = raw ? JSON.parse(raw) : null;
+      if (!session) return;
+      var roleLabel = {
+        'admin':'Quan tri','manager':'Quan ly','sales':'Ban hang',
+        'accountant':'Ke toan','warehouse':'Kho','hr':'Nhan su',
+        'driver':'Tai xe',
+      };
+      var uname = document.getElementById('mmn-uname');
+      var roleEl = document.getElementById('mmn-role');
+      var avEl   = document.getElementById('mmn-avatar');
+      if (uname) uname.textContent = session.name || session.email || '...';
+      if (roleEl) roleEl.textContent = roleLabel[session.role] || session.role || '';
+      if (avEl && session.name) {
+        var parts = session.name.trim().split(' ');
+        avEl.textContent = parts.length > 1
+          ? parts[0][0] + parts[parts.length-1][0]
+          : session.name.substring(0,2).toUpperCase();
+      }
+    } catch(e) {}
+  }
+
+    function _updateActiveMenu(page) {
     document.querySelectorAll('.mmn-group-btn').forEach(function(b){
       b.classList.remove('page-active');
     });

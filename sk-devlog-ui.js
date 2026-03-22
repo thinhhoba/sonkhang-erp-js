@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.29.1] 22/03/2026 — Fix loaders + Changelog fallback + Social v2.0
 // [v5.29] 22/03/2026 — Changelog+Masterplan2.0+Dashboard Merge+Internal Portal
  * sk-devlog-ui.js  SonKhang ERP v5.14
  * Realtime Changelog & Masterplan UI
@@ -154,8 +155,12 @@ function _loadAll(force) {
 
   api('devlog_get', { limit:100, type:ST.filter_type, q:ST.filter_q }, function(e,d) {
     if (!e && d && d.ok) {
-      ST.entries = d.data || [];
-      ST.stats   = d.by_type || null;
+      // [v5.29.1] Chỉ dùng GAS data nếu trả được entries thật — không overwrite bằng []
+      if (d.data && d.data.length > 0) {
+        ST.entries = d.data;
+        ST.stats   = d.by_type || null;
+      }
+      // Nếu GAS trả rỗng → giữ nguyên ST.entries (sẽ dùng _STATIC_CHANGELOG)
     }
     _check();
   });

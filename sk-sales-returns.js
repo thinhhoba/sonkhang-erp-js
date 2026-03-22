@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.35] 22/03/2026 — Redirect bao cao sang sk-bao-cao-bh-ui.js + flash timer
  * sk-sales-returns.js  SonKhang ERP v5.1
  * UI: Tra hang RMA + Bao cao + Combo/Flash sale
  * 21/03/2026
@@ -245,50 +246,15 @@
    * BAO CAO BAN HANG
    * ================================================================ */
   function loadBaoCaoBanHang() {
-    var ct = _ct(); if (!ct) return;
-    var now = new Date();
-    var m   = now.getMonth()+1;
-    var y   = now.getFullYear();
-
-    ct.innerHTML = '<div class="fade-in" style="padding:24px;">'
-      + '<div style="margin-bottom:20px;">'
-      + '<h1 style="font-size:22px;font-weight:900;">&#x1F4CA; Bao cao Ban hang</h1>'
-      + '<p style="font-size:12px;color:var(--text3);">Doanh thu * San pham ban chay * Hoa hong Sale * Loi nhuan</p>'
-      + '</div>'
-      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;" id="report-tabs">'
-      + [['revenue','Doanh thu'],['top','San pham ban chay'],['commission','Hoa hong Sale'],['profit','Loi nhuan']].map(function(t,i){
-          return '<button data-tab="'+t[0]+'" style="border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;'
-            +(i===0?'background:rgba(79,111,255,.15);border:1px solid rgba(79,111,255,.3);color:var(--accent2);':'background:var(--bg3);border:1px solid var(--border2);color:var(--text3);')+'">'
-            +t[1]+'</button>';
-        }).join('')
-      + '</div>'
-      + '<div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;">'
-      + '<label style="font-size:11px;color:var(--text3);">Thang:</label>'
-      + '<input type="number" id="rpt-month" value="'+m+'" min="1" max="12" style="width:70px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-family:inherit;font-size:12px;">'
-      + '<label style="font-size:11px;color:var(--text3);">Nam:</label>'
-      + '<input type="number" id="rpt-year" value="'+y+'" style="width:90px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-family:inherit;font-size:12px;">'
-      + '<button id="rpt-load-btn" style="background:rgba(79,111,255,.15);border:1px solid rgba(79,111,255,.3);color:var(--accent2);border-radius:8px;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Xem bao cao</button>'
-      + '</div>'
-      + '<div id="report-body"></div>'
-      + '</div>';
-
-    var curTab = 'revenue';
-    document.querySelectorAll('#report-tabs button').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        curTab = btn.getAttribute('data-tab');
-        document.querySelectorAll('#report-tabs button').forEach(function(b){
-          b.style.background='var(--bg3)'; b.style.borderColor='var(--border2)'; b.style.color='var(--text3)';
-        });
-        btn.style.background='rgba(79,111,255,.15)'; btn.style.borderColor='rgba(79,111,255,.3)'; btn.style.color='var(--accent2)';
-        _loadReport(curTab, Number(_gv('rpt-month')), Number(_gv('rpt-year')));
-      });
-    });
-    document.getElementById('rpt-load-btn').addEventListener('click', function(){
-      _loadReport(curTab, Number(_gv('rpt-month')), Number(_gv('rpt-year')));
-    });
-
-    _loadReport('revenue', m, y);
-  }
+  // [v5.35] Redirect sang sk-bao-cao-bh-ui.js
+  if (typeof window.loadBaoCaoBH === 'function') { window.loadBaoCaoBH(); return; }
+  var ct=_ct();if(!ct)return;
+  ct.innerHTML='<div style="padding:32px;text-align:center;color:var(--text3);">'
+    +'<div style="font-size:28px;margin-bottom:10px;">&#x1F4CA;</div>'
+    +'<div style="font-size:14px;font-weight:700;">Bao cao Bán hang</div>'
+    +'<div style="font-size:12px;margin-top:6px;">Module dang tai... Thu lai sau.</div>'
+  +'</div>';
+}
   window.loadBaoCaoBanHang = loadBaoCaoBanHang;
 
   function _loadReport(tab, month, year) {
@@ -541,6 +507,8 @@
     var el = document.getElementById('cfs-body'); if (!el) return;
     var apiF = _api(); if (!apiF) return;
     apiF('sales_get_flash_sales',{},function(e,d){
+      // [v5.35] Countdown timers - clear previous
+      if (window._fsTimers) window._fsTimers.forEach(function(t){clearInterval(t);}); window._fsTimers=[];
       var rows = (!e&&d&&d.ok)?d.data:[];
       var html = '<button id="btn-new-fs" style="margin-bottom:12px;background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.2);color:#ff4d6d;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x26A1; Tao Flash Sale</button>';
       if (!rows.length) {

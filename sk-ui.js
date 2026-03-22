@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.24] 22/03/2026 — Fix: doPost null-safety, sapoSyncOrdersOnly, GAS diagnostics
 // [v5.23.1] 22/03/2026 — Fix: JSON parse error, Telegram plain-text, sapoGetStatus inline calls
  * sk-ui.js — SonKhang ERP v3.5
  * Core: api(), getContent(), helpers to\u00e0n h\u1ec7 th\u1ed1ng
@@ -34,19 +35,37 @@
       body:    JSON.stringify(body)
     })
     .then(function (r) {
-      // [v5.23.1 FIX] Safe parse: text() trước, rồi JSON.parse
-      // GAS có thể trả redirect HTML hoặc empty → r.json() throw
+      var status = r.status;
+      // [v5.24] Safe parse với đầy đủ diagnostic
       return r.text().then(function(txt) {
         if (!txt || txt.trim() === '') {
-          return { ok:false, error:'GAS_EMPTY_RESPONSE: Kiem tra GAS URL va Deploy version' };
+          // Empty body: thường do GAS chưa deploy "Anyone" hoặc version cũ
+          console.error('[sk-ui] Empty response for action=' + action +
+            ' | HTTP=' + status +
+            ' | Checklist: 1) GAS Deploy→Anyone 2) New Version 3) URL đúng: ' + gasUrl.substring(0,60));
+          return {
+            ok: false,
+            error: 'GAS_EMPTY_RESPONSE',
+            hint: 'Vao GAS Editor → Deploy → Manage → Edit → Who has access: Anyone → New version → Deploy',
+            http_status: status,
+            gas_url_prefix: gasUrl.substring(0, 50)
+          };
         }
         try {
           return JSON.parse(txt);
         } catch(parseErr) {
-          // HTML error page hoặc redirect → log 100 chars đầu
-          var preview = txt.trim().substring(0, 120).replace(/<[^>]+>/g,'');
-          console.warn('[sk-ui] Non-JSON response for action=' + action + ':', preview);
-          return { ok:false, error:'GAS_NON_JSON: ' + preview };
+          var preview = txt.trim().substring(0, 200).replace(/<[^>]+>/g, '').trim();
+          console.warn('[sk-ui] Non-JSON for action=' + action + ' HTTP=' + status + ':', preview);
+          // Kiểm tra nếu là trang đăng nhập Google
+          var isGoogleLogin = txt.indexOf('accounts.google.com') > -1 ||
+                              txt.indexOf('Sign in') > -1;
+          return {
+            ok: false,
+            error: isGoogleLogin
+              ? 'GAS_AUTH_REQUIRED: Deploy lai GAS voi "Anyone" (khong can dang nhap)'
+              : 'GAS_NON_JSON: ' + preview.substring(0, 100),
+            http_status: status
+          };
         }
       });
     })

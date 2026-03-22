@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.28] 22/03/2026 — Profile+Social+Messaging+AuthGate+Router
  * sk-auth-ui.js — SonKhang ERP v3.5
  * SK-AUTH-001: Identity & Access Management UI
  * Ng\u00e0y: 20/03/2026
@@ -695,7 +696,27 @@
   function _getToken(){try{return localStorage.getItem('sk_session')||'';}catch(e){return '';}}
   function _setToken(tok){try{localStorage.setItem('sk_session',tok);}catch(e){}}
   function _clearToken(){try{localStorage.removeItem('sk_session');}catch(e){}}
-  function _setUser(d){window._auth.user={email:d.email||'',name:d.name||'',role:d.role||'user',phone:d.phone||'',department:d.department||'',avatar:d.avatar||''};}
+  function _setUser(d) {
+    window._auth.user = {
+      email: d.email||'', name: d.name||'', role: d.role||'user',
+      phone: d.phone||'', department: d.department||'', avatar: d.avatar||''
+    };
+    // [v5.28] Lưu full session data để các module khác dùng
+    try {
+      localStorage.setItem('sk_session_data', JSON.stringify(window._auth.user));
+    } catch(e) {}
+    // [v5.28] Redirect sau login nếu có trang đang chờ
+    try {
+      var afterLogin = sessionStorage.getItem('sk_after_login');
+      if (afterLogin && afterLogin !== 'dang-nhap') {
+        sessionStorage.removeItem('sk_after_login');
+        setTimeout(function() {
+          if (typeof window.skLoad === 'function') window.skLoad(afterLogin);
+        }, 200);
+        return;
+      }
+    } catch(e) {}
+  }
   function _val(id){var e=document.getElementById(id);return e?e.value:'';}
   function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function _skelBlock(){if(typeof skel==='function')return skel();return '<div style="text-align:center;padding:60px;color:#64748b;"><div style="width:32px;height:32px;border:2px solid #334155;border-top-color:#3b82f6;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div>\u0110ang t\u1ea3i...</div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>';}

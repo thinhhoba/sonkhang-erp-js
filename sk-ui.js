@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.23.1] 22/03/2026 — Fix: JSON parse error, Telegram plain-text, sapoGetStatus inline calls
  * sk-ui.js — SonKhang ERP v3.5
  * Core: api(), getContent(), helpers to\u00e0n h\u1ec7 th\u1ed1ng
  * S\u1eeda l\u1ed7i: window.api = api  \u2190 CDN modules d\u00f9ng \u0111\u01b0\u1ee3c
@@ -32,7 +33,23 @@
       headers: { 'Content-Type': 'text/plain' },
       body:    JSON.stringify(body)
     })
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      // [v5.23.1 FIX] Safe parse: text() trước, rồi JSON.parse
+      // GAS có thể trả redirect HTML hoặc empty → r.json() throw
+      return r.text().then(function(txt) {
+        if (!txt || txt.trim() === '') {
+          return { ok:false, error:'GAS_EMPTY_RESPONSE: Kiem tra GAS URL va Deploy version' };
+        }
+        try {
+          return JSON.parse(txt);
+        } catch(parseErr) {
+          // HTML error page hoặc redirect → log 100 chars đầu
+          var preview = txt.trim().substring(0, 120).replace(/<[^>]+>/g,'');
+          console.warn('[sk-ui] Non-JSON response for action=' + action + ':', preview);
+          return { ok:false, error:'GAS_NON_JSON: ' + preview };
+        }
+      });
+    })
     .then(function (d) { if (typeof cb === 'function') cb(null, d); })
     .catch(function (e) {
       console.error('[sk-ui] api() l\u1ed7i:', action, e);

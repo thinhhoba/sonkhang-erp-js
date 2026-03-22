@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.26] 22/03/2026 — Smart Search: Fuzzy+Bigram+Live+History+Debounce
 // [v5.21.1] 22/03/2026 — Menubar redesign: 9 groups, MENU_ALIASES, SK_LABELS fix
 // [v5.15] 22/03/2026 — Notification Bell: GAS polling, XSS guard, O(1) dedup
 // [v5.14] 21/03/2026 — DevLog System: realtime changelog + masterplan tracking
@@ -124,7 +125,44 @@
   ];
 
   /* ── Search index ─────────────────────────────────────────────── */
+  // [v5.26] SEARCH_INDEX auto-built from MENU
   var SEARCH_INDEX = [];
+
+  var _SK_ALIASES = {
+    'don-hang':'ban hang order don dat hang',
+    'crm-khach-hang':'crm customer khach lich su',
+    'nhan-su':'hrm nhan vien nv luong cham cong',
+    'ke-toan':'accounting misa so quy cong no',
+    'ton-kho':'warehouse kho hang nhap xuat',
+    'bang-gia':'san pham gia product price',
+    'bao-cao-bh':'report thong ke doanh thu',
+    'sapo-sync':'sapo dong bo sync api',
+    'dashboard':'tong quan trang chu overview',
+    'admin-dashboard':'admin quan tri he thong',
+    'giao-hang':'van chuyen ship delivery kho',
+    'fulfillment':'xu ly don kho dieu xe giao',
+    'tra-hang':'rma return tra hoan',
+    'chiet-khau':'khuyen mai discount promotion',
+    'giao-hang-mobile':'tai xe mobile driver',
+  };
+
+  function _buildSearchIndex() {
+    SEARCH_INDEX = [];
+    MENU.forEach(function(group) {
+      group.items.forEach(function(item) {
+        var aliases = _SK_ALIASES[item.id] || '';
+        SEARCH_INDEX.push({
+          id: item.id, label: item.label,
+          icon: item.icon||'&#x1F4C4;',
+          group: group.label, groupId: group.id,
+          color: group.color||'#4f6fff',
+          keywords: _skNorm(item.label+' '+item.id.replace(/-/g,' ')+' '+aliases),
+          type: 'module',
+        });
+      });
+    });
+  }
+
   MENU.forEach(function(group) {
     group.items.forEach(function(item) {
       SEARCH_INDEX.push({
@@ -252,15 +290,24 @@
     var so = document.createElement('div');
     so.id = 'sk-search-overlay';
     so.innerHTML = '<div class="sk-search-box">'
-      + '<input id="sk-cmd-input" type="text" placeholder="Tim kiem module, chuc nang... (Ctrl+K)">'
-      + '<div id="sk-cmd-results"></div>'
-      + '</div>';
+      + '<div style="display:flex;align-items:center;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--border,#1e293b);">'
+        + '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--text3);flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
+        + '<input id="sk-cmd-input" type="text" placeholder="Tim kiem module, don hang, khach hang... (Ctrl+K)" style="flex:1;background:none;border:none;outline:none;color:var(--text,#e2e8f0);font-size:14px;font-family:inherit;font-weight:500;">'
+        + '<kbd style="font-family:monospace;font-size:10px;background:var(--bg3,#1a2035);border:1px solid var(--border2,#2a3a55);border-radius:4px;padding:2px 6px;color:var(--text3);">ESC</kbd>'
+      + '</div>'
+      + '<div id="sk-cmd-results" style="max-height:420px;overflow-y:auto;"></div>'
+      + '<div style="display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--border,#1e293b);font-size:10px;color:var(--text3);">'
+        + '<span><kbd style="background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:monospace;">&#x2191;&#x2193;</kbd> Di chuyen &nbsp;<kbd style="background:var(--bg3);border:1px solid var(--border2);border-radius:3px;padding:1px 5px;font-family:monospace;">Enter</kbd> Chon</span>'
+        + '<span>SonKhang Smart Search v5.26</span>'
+      + '</div>'
+    + '</div>';
 
     document.body.insertBefore(nav, document.body.firstChild);
     document.body.insertBefore(bc, nav.nextSibling);
     document.body.insertBefore(so, bc.nextSibling);
 
     _bindMenuEvents();
+    _buildSearchIndex();
     _bindSearchEvents();
     _bindBellEvents();
     _updateBellBadge();
@@ -366,40 +413,223 @@
     if (overlay) overlay.classList.remove('open');
   }
 
+    // _skNorm, _skBigram, _skScore, _skHighlight, history, debounce
+  function _skNorm(s) {
+    if (!s) return '';
+    return String(s).toLowerCase()
+      .replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g,'a').replace(/[èéẹẻẽêềếệểễ]/g,'e')
+      .replace(/[ìíịỉĩ]/g,'i').replace(/[òóọỏõôồốộổỗơờớợởỡ]/g,'o')
+      .replace(/[ùúụủũưừứựửữ]/g,'u').replace(/[ỳýỵỷỹ]/g,'y')
+      .replace(/đ/g,'d').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+  }
+  function _skBigram(a,b) {
+    if (!a||!b||a.length<2||b.length<2) return 0;
+    var bg={};
+    for (var i=0;i<a.length-1;i++) bg[a[i]+a[i+1]]=(bg[a[i]+a[i+1]]||0)+1;
+    var m=0;
+    for (var j=0;j<b.length-1;j++){var k=b[j]+b[j+1];if(bg[k]>0){m++;bg[k]--;}}
+    return (2.0*m)/(a.length+b.length-2);
+  }
+  function _skScore(keywords,label,qNorm,tokens) {
+    var best=0;
+    [keywords,label].forEach(function(f){
+      if (!f) return;
+      var s=0;
+      if (f.indexOf(qNorm)===0) s=15;
+      else if (f.indexOf(qNorm)>-1) s=10;
+      else if (tokens.every(function(t){return f.indexOf(t)>-1;})) s=8;
+      else if (tokens.some(function(t){return t.length>1&&f.indexOf(t)>-1;})) s=4;
+      else { var sim=_skBigram(qNorm,f); if(sim>0.45) s=Math.round(sim*5); }
+      if (s>best) best=s;
+    });
+    return best;
+  }
+  function _skHL(label,qNorm) {
+    if (!qNorm||!label) return _skEsc(label);
+    var ln=_skNorm(label), idx=ln.indexOf(qNorm);
+    if (idx<0) return _skEsc(label);
+    return _skEsc(label.substring(0,idx))
+      +'<mark style="background:rgba(79,111,255,.3);color:var(--accent2);border-radius:3px;padding:0 2px;">'
+      +_skEsc(label.substring(idx,idx+qNorm.length))+'</mark>'
+      +_skEsc(label.substring(idx+qNorm.length));
+  }
+  function _skEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  var _SK_HIST_KEY='sk_srch_h1';
+  function _histGet(){try{return JSON.parse(localStorage.getItem(_SK_HIST_KEY)||'[]');}catch(e){return[];}}
+  function _histAdd(q){if(!q||q.length<2)return;var h=_histGet().filter(function(x){return x!==q;});h.unshift(q);try{localStorage.setItem(_SK_HIST_KEY,JSON.stringify(h.slice(0,10)));}catch(e){}}
+  function _histClear(){try{localStorage.removeItem(_SK_HIST_KEY);}catch(e){}}
+  var _skTimer=null, _skCache={};
+
+
   function _renderSearchResults(q) {
     var el = document.getElementById('sk-cmd-results');
     if (!el) return;
-    q = (q || '').toLowerCase().trim();
-    var results = q
-      ? SEARCH_INDEX.filter(function(item) { return item.keywords.indexOf(q) >= 0; })
-      : SEARCH_INDEX.slice(0, 12);
-    _cmdResults = results;
-    _cmdIdx = 0;
-    if (!results.length) {
-      el.innerHTML = '<div class="sk-cmd-empty">Khong tim thay ket qua cho "' + q + '"</div>';
+
+    q = (q || '').trim();
+    var qNorm  = _skNorm(q);
+    var tokens = qNorm.split(' ').filter(Boolean);
+
+    // Input rong → show history + recent modules
+    if (!qNorm) {
+      _renderSearchEmpty(el);
       return;
     }
-    el.innerHTML = results.slice(0,12).map(function(item, i) {
-      return '<div class="sk-cmd-item' + (i === 0 ? ' active' : '') + '" data-idx="' + i + '">'
-        + '<span class="sk-cmd-icon">' + item.icon + '</span>'
-        + '<div class="sk-cmd-info">'
-          + '<div class="sk-cmd-label">' + item.label + '</div>'
-          + '<div class="sk-cmd-group">' + item.group + ' · ' + item.desc + '</div>'
-        + '</div>'
-        + '</div>';
+
+    // Build local results từ SEARCH_INDEX (instant)
+    var localRes = SEARCH_INDEX
+      .map(function(item) {
+        var s = _skScore(item.keywords, _skNorm(item.label), qNorm, tokens);
+        return s > 0 ? { item: item, score: s } : null;
+      })
+      .filter(Boolean)
+      .sort(function(a,b){ return b.score - a.score; })
+      .slice(0, 6);
+
+    // Render local results ngay lập tức
+    _renderLocalSection(el, localRes, qNorm);
+
+    // Live search qua GAS — debounce 400ms
+    clearTimeout(_skTimer);
+    _skTimer = setTimeout(function() {
+      _renderLiveSections(el, q, qNorm, localRes);
+    }, 400);
+  }
+
+  function _renderSearchEmpty(el) {
+    var hist = _histGet();
+    if (!hist.length) {
+      // Show top modules
+      var top = SEARCH_INDEX.slice(0, 8);
+      el.innerHTML = '<div style="padding:6px 8px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;">Truy cap nhanh</div>'
+        + top.map(function(item) { return _renderModuleItem(item, ''); }).join('');
+      return;
+    }
+    var hdr = '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;">'
+      + '<span style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;">Lich su tim kiem</span>'
+      + '<button onclick="window._skHistClearUI()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;font-family:inherit;padding:0;">Xoa</button>'
+      + '</div>';
+    el.innerHTML = hdr + hist.map(function(q) {
+      return '<div class="sk-cmd-item" onclick="window._skHistLoad(\'' + q.replace(/'/g, '') + '\')">'
+        + '<span class="sk-cmd-icon">&#x1F550;</span>'
+        + '<div class="sk-cmd-info"><div class="sk-cmd-label">' + _skEsc(q) + '</div>'
+        + '<div class="sk-cmd-meta">Lich su</div></div></div>';
     }).join('');
-    el.querySelectorAll('.sk-cmd-item').forEach(function(row) {
-      row.addEventListener('click', function() {
-        var idx = parseInt(row.getAttribute('data-idx'));
-        _selectCmd(idx);
-      });
-      row.addEventListener('mouseenter', function() {
-        var idx = parseInt(row.getAttribute('data-idx'));
-        _cmdIdx = idx;
-        _highlightCmd();
-      });
+  }
+
+  function _renderLocalSection(el, results, qNorm) {
+    if (!results.length) {
+      el.innerHTML = '<div class="sk-cmd-empty">Khong tim thay module. Dang tim trong du lieu...</div>';
+      return;
+    }
+    var html = '<div style="padding:5px 8px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;">Chuc nang</div>'
+      + results.map(function(r) { return _renderModuleItem(r.item, qNorm); }).join('')
+      + '<div id="sk-live-sections" style="border-top:1px solid var(--border,#1e293b);margin-top:4px;">'
+        + '<div style="padding:10px 12px;font-size:11px;color:var(--text3);">Dang tim trong du lieu...</div>'
+      + '</div>';
+    el.innerHTML = html;
+  }
+
+  function _renderModuleItem(item, qNorm) {
+    var c = item.color || '#4f6fff';
+    return '<div class="sk-cmd-item" onclick="window._skRunItem(\'' + item.id + '\')">'
+      + '<span class="sk-cmd-icon" style="font-size:16px;">' + item.icon + '</span>'
+      + '<div class="sk-cmd-info">'
+        + '<div class="sk-cmd-label">' + _skHL(item.label, qNorm) + '</div>'
+        + '<div class="sk-cmd-meta" style="color:' + c + '22;background:' + c + '22;'
+          + 'border-radius:4px;padding:1px 5px;font-size:9px;color:' + c + ';display:inline-block;">'
+          + _skEsc(item.group) + '</div>'
+      + '</div>'
+      + '<span style="font-size:10px;color:var(--text3);">Enter</span>'
+    + '</div>';
+  }
+
+  function _renderLiveSections(el, q, qNorm, localRes) {
+    var cacheKey = qNorm;
+    if (_skCache[cacheKey]) {
+      _injectLiveSections(q, qNorm, _skCache[cacheKey]);
+      return;
+    }
+
+    var apiF = typeof window.api === 'function' ? window.api : null;
+    if (!apiF) return;
+
+    apiF('smart_search', { q: q, limit: 5 }, function(e, d) {
+      if (e || !d || !d.ok) return;
+      _skCache[cacheKey] = d.results;
+      // Prune cache (max 20 entries)
+      var keys = Object.keys(_skCache);
+      if (keys.length > 20) delete _skCache[keys[0]];
+      _injectLiveSections(q, qNorm, d.results);
     });
   }
+
+  function _injectLiveSections(q, qNorm, results) {
+    var liveEl = document.getElementById('sk-live-sections');
+    if (!liveEl) return;
+
+    var html = '';
+    var TYPES = [
+      { key:'orders',    icon:'&#x1F4CB;', label:'Don hang',   color:'#4f6fff',
+        render: function(o){ return _skEsc(o.ma_don)+' · '+_skEsc(o.khach)+' · '+_fmtLive(o.tong_tt)+'d'; },
+        action: function(o){ return 'order-detail:'+o.id; }
+      },
+      { key:'customers', icon:'&#x1F465;', label:'Khach hang', color:'#00d68f',
+        render: function(c){ return _skEsc(c.ten)+' · '+_skEsc(c.phone); },
+        action: function(c){ return 'customer-detail:'+c.id; }
+      },
+      { key:'products',  icon:'&#x1F4E6;', label:'San pham',   color:'#f59e0b',
+        render: function(p){ return _skEsc(p.ma_sp)+' · '+_skEsc(p.ten_sp)+' · '+_fmtLive(p.gia_ban)+'d'; },
+        action: function(p){ return 'product-detail:'+p.id; }
+      },
+      { key:'employees', icon:'&#x1F464;', label:'Nhan vien',  color:'#8b5cf6',
+        render: function(emp){ return _skEsc(emp.ten_nv)+' · '+_skEsc(emp.chuc_vu); },
+        action: function(emp){ return 'employee-detail:'+emp.id; }
+      },
+    ];
+
+    var hasAny = false;
+    TYPES.forEach(function(t) {
+      var rows = (results && results[t.key]) || [];
+      if (!rows.length) return;
+      hasAny = true;
+      html += '<div style="padding:5px 8px;font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;">'
+        + '<span style="color:' + t.color + ';">' + t.icon + '</span> ' + t.label + ' (' + rows.length + ')</div>';
+      rows.forEach(function(row) {
+        var act   = t.action(row);
+        var label = t.render(row);
+        html += '<div class="sk-cmd-item" onclick="window._skLiveAction(\'' + act.replace(/'/g,"") + '\')">'
+          + '<span class="sk-cmd-icon" style="font-size:14px;color:' + t.color + ';">' + t.icon + '</span>'
+          + '<div class="sk-cmd-info"><div class="sk-cmd-label" style="font-size:12px;">' + label + '</div></div>'
+          + '</div>';
+      });
+    });
+
+    if (!hasAny) html = '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Khong tim thay du lieu lien quan.</div>';
+    liveEl.innerHTML = html;
+  }
+
+  function _fmtLive(n){ n=Number(n||0); if(n>=1e6) return (n/1e6).toFixed(1)+'tr'; if(n>=1e3) return (n/1e3).toFixed(0)+'k'; return n; }
+
+  window._skRunItem = function(id) {
+    _histAdd(id);
+    closeSearch();
+    if (typeof window.skLoad === 'function') window.skLoad(id);
+  };
+
+  window._skLiveAction = function(action) {
+    closeSearch();
+    var parts = action.split(':');
+    var type  = parts[0];
+    var id    = parts[1];
+    if (!id) return;
+    if (type === 'order-detail'    && typeof window._soDetail === 'function')    window._soDetail(id);
+    else if (type === 'customer-detail' && typeof window.skLoad === 'function') window.skLoad('crm-khach-hang');
+    else if (type === 'product-detail'  && typeof window.skLoad === 'function') window.skLoad('bang-gia');
+    else if (type === 'employee-detail' && typeof window.skLoad === 'function') window.skLoad('nhan-su');
+  };
+
+  window._skHistClearUI = function() { _histClear(); var el=document.getElementById('sk-cmd-results'); if(el) _renderSearchEmpty(el); };
+  window._skHistLoad    = function(q) { var inp=document.getElementById('sk-cmd-input'); if(inp){inp.value=q; _renderSearchResults(q);} };
 
   function _moveCmdIdx(dir) {
     _cmdIdx = Math.max(0, Math.min(_cmdResults.length - 1, _cmdIdx + dir));
@@ -429,7 +659,10 @@
     if (btn)     btn.addEventListener('click', openSearch);
     if (overlay) overlay.addEventListener('click', function(e){ if (e.target===overlay) closeSearch(); });
     if (input) {
-      input.addEventListener('input',   function(){ _renderSearchResults(this.value); });
+      input.addEventListener('input', function() {
+        // [v5.26] Debounce: local instant, live debounced inside _renderSearchResults
+        _renderSearchResults(this.value);
+      });
       input.addEventListener('keydown', function(e){
         if (e.key === 'ArrowDown') { e.preventDefault(); _moveCmdIdx(1); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); _moveCmdIdx(-1); }

@@ -1,4 +1,5 @@
 /* ================================================================
+// [v5.35] 22/03/2026 — Dashboard chart 14d + Chi tiet don + Bulk + Pagination
 // [v5.25.1] 22/03/2026 — Fix: sk-modal-box null, race condition guard
 // [v5.22.1] 22/03/2026 — Fix: STATE global → local _soPage
  * sk-sales-orders.js — SonKhang ERP v4.0
@@ -60,426 +61,466 @@
   };
 
   /* ── Entry point ──────────────────────────────────────────── */
-  function loadDonHang() {
-    var ct = _ct(); if (!ct) return;
-    if (typeof window._salesInjectCSS === 'function') window._salesInjectCSS();
-    ct.innerHTML = _buildShell();
-    _loadDashboard();
-    _loadOrders('all');
-  }
-  window.loadDonHang = loadDonHang;
+  
+// ════════════════════════════════════════════════════════════════
+// [v5.35] sk-sales-orders.js — NÂNG CẤP
+// ════════════════════════════════════════════════════════════════
 
-  /* Shortcut tabs - goi tu sidebar hoac mega menu */
-  window.loadDonHangTab = function (tab) {
-    if (!document.getElementById('so-root')) {
-      loadDonHang();
-      setTimeout(function () { if (typeof window._soTab === 'function') window._soTab(tab); }, 200);
-    } else {
-      if (typeof window._soTab === 'function') window._soTab(tab);
-    }
+var _SO = { page:1, status:'all', q:'', from:'', to:'', sort:'ngay', total:0 };
+var _cartItems = [];
+var ORDER_STATUS_LABELS = {
+  nhap:'Nháp', cho_xac_nhan:'Chờ duyệt', da_xac_nhan:'Đã duyệt',
+  dang_giao:'Đang giao', da_giao:'Đã giao', hoan_thanh:'Hoàn thành',
+  huy:'Đã hủy'
+};
+var ORDER_STATUS_COLORS = {
+  nhap:'#64748b', cho_xac_nhan:'#fbbf24', da_xac_nhan:'#4f6fff',
+  dang_giao:'#06b6d4', da_giao:'#10b981', hoan_thanh:'#34d399', huy:'#f87171'
+};
+var ORDER_WORKFLOW = ['nhap','cho_xac_nhan','da_xac_nhan','dang_giao','da_giao','hoan_thanh'];
+
+function loadDonHang() {
+  var ct = _ct(); if (!ct) return;
+  if (typeof window._salesInjectCSS === 'function') window._salesInjectCSS();
+  ct.innerHTML = _buildShell();
+  _loadDashboard();
+  _loadOrders('all');
+}
+
+function _buildShell() {
+  return '<div id="so-root" class="fade-in" style="padding:24px;">'
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;">'
+      + '<div><h1 style="font-size:22px;font-weight:900;margin:0;">&#x1F6D2; Quan ly Don hang</h1>'
+        + '<p style="font-size:12px;color:var(--text3);margin:4px 0 0;">Tao don · Theo doi · Thanh toan · Giao hang</p></div>'
+      + '<button id="so-new-btn" style="background:rgba(52,211,153,.15);border:1px solid rgba(52,211,153,.3);color:var(--green);border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x2795; Tao don hang</button>'
+    + '</div>'
+    // KPI row
+    + '<div id="so-kpi-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;"></div>'
+    // Chart + Top5 row
+    + '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:14px;">'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;">'
+        + '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Doanh thu 14 ngay</div>'
+        + '<canvas id="so-chart" height="120"></canvas>'
+      + '</div>'
+      + '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;">'
+        + '<div style="font-size:11px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:10px;">Top 5 SP ban chay</div>'
+        + '<div id="so-top5"></div>'
+      + '</div>'
+    + '</div>'
+    // Filter bar
+    + '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px;align-items:center;">'
+      + '<input id="so-search" type="text" placeholder="Tim ma don, ten KH..." style="flex:1;min-width:150px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:7px 11px;color:var(--text);font-family:inherit;font-size:12px;">'
+      + '<select id="so-status-sel" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 9px;color:var(--text3);font-family:inherit;font-size:11px;">'
+        + '<option value="all">Tat ca</option>'
+        + Object.keys(ORDER_STATUS_LABELS).map(function(k){ return '<option value="'+k+'">'+ORDER_STATUS_LABELS[k]+'</option>'; }).join('')
+      + '</select>'
+      + '<input id="so-from" type="date" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;color:var(--text);font-family:inherit;font-size:11px;">'
+      + '<input id="so-to" type="date" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;color:var(--text);font-family:inherit;font-size:11px;">'
+      + '<button id="so-search-btn" style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Tim</button>'
+      + '<button id="so-bulk-btn" style="background:rgba(79,111,255,.12);border:1px solid rgba(79,111,255,.25);color:var(--accent2);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x270F; Bulk</button>'
+    + '</div>'
+    // Bulk bar (hidden)
+    + '<div id="so-bulk-bar" style="display:none;background:rgba(79,111,255,.08);border:1px solid rgba(79,111,255,.2);border-radius:10px;padding:9px 14px;margin-bottom:10px;align-items:center;justify-content:space-between;">'
+      + '<span id="so-bulk-cnt" style="font-size:12px;font-weight:700;color:var(--accent2);">0 don duoc chon</span>'
+      + '<div style="display:flex;gap:7px;">'
+        + '<select id="so-bulk-status" style="background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:5px 9px;color:var(--text);font-family:inherit;font-size:11px;">'
+          + Object.keys(ORDER_STATUS_LABELS).map(function(k){ return '<option value="'+k+'">→ '+ORDER_STATUS_LABELS[k]+'</option>'; }).join('')
+        + '</select>'
+        + '<button id="so-bulk-apply" style="background:var(--accent);border:none;color:#fff;border-radius:7px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">Ap dung</button>'
+      + '</div>'
+    + '</div>'
+    + '<div id="so-list"></div>'
+    + '<div id="so-pagination" style="display:flex;gap:6px;justify-content:center;margin-top:12px;flex-wrap:wrap;"></div>'
+  + '</div>';
+}
+
+function _buildShellBindings() {
+  var btn = document.getElementById('so-new-btn');
+  if (btn) btn.addEventListener('click', function(){ _SO.page=1; _cartItems=[]; _loadOrderForm(null); });
+  var doSearch = function(){
+    _SO.q      = (document.getElementById('so-search')||{}).value||'';
+    _SO.status = (document.getElementById('so-status-sel')||{}).value||'all';
+    _SO.from   = (document.getElementById('so-from')||{}).value||'';
+    _SO.to     = (document.getElementById('so-to')||{}).value||'';
+    _SO.page   = 1;
+    _loadOrders(_SO.status);
   };
+  var sb = document.getElementById('so-search-btn');
+  if (sb) sb.addEventListener('click', doSearch);
+  var si = document.getElementById('so-search');
+  if (si) si.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
+  var bb = document.getElementById('so-bulk-btn');
+  if (bb) bb.addEventListener('click', function(){
+    var bar = document.getElementById('so-bulk-bar');
+    if (bar) bar.style.display = bar.style.display==='flex'?'none':'flex';
+  });
+  var ba = document.getElementById('so-bulk-apply');
+  if (ba) ba.addEventListener('click', _soBulkStatus);
+}
 
-  /* ── Shell HTML ───────────────────────────────────────────── */
-  function _buildShell() {
-    return '<div id="so-root" class="fade-in">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">'
-      +   '<div><h1 style="font-size:22px;font-weight:900;">🛒 Quản lý Đơn hàng</h1>'
-      +   '<p style="font-size:12px;color:var(--text3);">Tất cả trạng thái — liên kết kho, giao hàng, kế toán</p></div>'
-      +   '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
-      +   '<button class="btn-ghost" onclick="_soRefresh()" style="font-size:11px;">🔄 Đồng bộ Sapo</button>'
-      +   '<button class="btn-primary" onclick="_soNewOrder()" style="font-size:11px;">+ Tạo đơn hàng</button>'
-      +   '</div>'
-      + '</div>'
-      + '<div id="so-kpi-row" class="sk-kpi-grid"></div>'
-      + '<div class="sk-tab-bar" id="so-tabs">'
-      + STATUS_TABS.map(function(t) {
-          return '<button class="sk-tab'+(t.id==='all'?' active':'')+'" id="sotab-'+t.id+'" onclick="_soTab(\''+t.id+'\')">'
-            + t.icon+' '+_esc(t.label)+'</button>';
-        }).join('')
-      + '</div>'
-      + '<div class="sk-toolbar">'
-      +   '<input class="sk-search" id="so-search" placeholder="🔍 Tìm đơn hàng, khách hàng..." oninput="_soSearch()">'
-      +   '<select class="sk-filter" id="so-sort" onchange="_soSearch()">'
-      +     '<option value="date_desc">Mới nhất</option>'
-      +     '<option value="date_asc">Cũ nhất</option>'
-      +     '<option value="total_desc">Giá trị cao</option>'
-      +   '</select>'
-      +   '<input type="date" class="sk-filter" id="so-from" oninput="_soSearch()">'
-      +   '<input type="date" class="sk-filter" id="so-to" oninput="_soSearch()">'
-      + '</div>'
-      + '<div id="so-list">'+window.salesLoading('Đang tải đơn hàng...')+'</div>'
-      + '</div>';
-  }
+// ── Dashboard ─────────────────────────────────────────────────────
+function _loadDashboard() {
+  var apiF = _api(); if (!apiF) return;
+  var now  = new Date();
+  apiF('sales_get_dashboard',{month:now.getMonth()+1,year:now.getFullYear()},function(e,d){
+    if (e||!d||!d.ok) return;
+    var s   = d.stats||{};
+    var kpi = document.getElementById('so-kpi-row'); if (!kpi) return;
+    var kpis = [
+      {icon:'&#x1F4CB;', lbl:'Tong don thang', v:s.total_orders||0,   clr:'#818cf8', fmt:false},
+      {icon:'&#x1F4B0;', lbl:'Doanh thu',       v:s.doanh_thu||0,     clr:'#34d399', fmt:true},
+      {icon:'&#x1F4B3;', lbl:'Da thu',           v:s.da_thu||0,        clr:'#4f6fff', fmt:true},
+      {icon:'&#x23F3;',  lbl:'Cho xac nhan',     v:s.so_don_moi||0,    clr:'#fbbf24', fmt:false},
+    ];
+    kpi.innerHTML = kpis.map(function(k){
+      return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">'
+          +'<span style="font-size:18px;">'+k.icon+'</span>'
+          +'<span style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;">'+k.lbl+'</span>'
+        +'</div>'
+        +'<div style="font-size:20px;font-weight:900;color:'+k.clr+';font-family:monospace;">'
+          +(k.fmt ? _fmtM(k.v)+'d' : k.v)
+        +'</div>'
+      +'</div>';
+    }).join('');
 
-  /* ── Dashboard KPIs ───────────────────────────────────────── */
-  function _loadDashboard() {
-    var apiF = _api(); if (!apiF) return;
-    var now  = new Date();
-    apiF('sales_get_dashboard', { month:now.getMonth()+1, year:now.getFullYear() }, function(e,d) {
-      var el = document.getElementById('so-kpi-row'); if (!el||e||!d||!d.ok) return;
-      var s  = d.stats||{};
-      el.innerHTML = [
-        kpiCard('📋','Tổng đơn',          s.total_orders||0,     'var(--text2)'),
-        kpiCard('💰','Doanh thu',          typeof window.fmtMoney==='function'?window.fmtMoney(s.doanh_thu):s.doanh_thu, 'var(--green)'),
-        kpiCard('💳','Chưa thu',           typeof window.fmtMoney==='function'?window.fmtMoney(s.chua_thu):s.chua_thu,   'var(--red)'),
-        kpiCard('🚚','Đang giao',          s.dang_giao||0,        'var(--purple)'),
-        kpiCard('⏳','Chờ xác nhận',      s.cho_xac_nhan||0,     'var(--yellow)'),
-        kpiCard('🎉','Hoàn thành',        s.so_don_hoan_thanh||0,'var(--cyan)')
-      ].join('');
-    });
-  }
-
-  function kpiCard(icon,label,val,col) {
-    return '<div class="sk-kpi-card"><div class="sk-kpi-icon">'+icon+'</div>'
-      +'<div><div class="sk-kpi-val" style="color:'+col+';">'+_esc(String(val))+'</div>'
-      +'<div class="sk-kpi-lbl">'+_esc(label)+'</div></div></div>';
-  }
-
-  /* ── Load Orders ──────────────────────────────────────────── */
-  var _curStatus = 'all';
-
-  function _soTab(st) {
-    _curStatus = st;
-    document.querySelectorAll('.sk-tab').forEach(function(b) {
-      b.classList.toggle('active', b.id === 'sotab-'+st);
-    });
-    _loadOrders(st);
-  }
-  window._soTab = _soTab;
-
-  // [v5.22.1 FIX] Local pagination state — không dùng global STATE
-  var _soPage = 1;
-
-  function _loadOrders(status) {
-    var el = document.getElementById('so-list'); if (!el) return;
-    el.innerHTML = window.salesLoading('Đang tải...');
-    var apiF = _api(); if (!apiF) return;
-    var params = {
-      search    : (_gv('so-search')||'').toLowerCase(),
-      from_date : _gv('so-from') || '',
-      to_date   : _gv('so-to')   || '',
-      limit     : 30,
-      page      : _soPage,
-    };
-    if (status && status !== 'all') params.status = status;
-    apiF('sales_get_orders', params, function(e,d) {
-      if (e||!d||!d.ok) { el.innerHTML=window.salesEmpty('⚠️','Lỗi tải đơn hàng','Thử lại','_soTab(\'all\')'); return; }
-      _orders = d.data || [];
-      if (!_orders.length) { el.innerHTML=window.salesEmpty('📭','Chưa có đơn hàng','+ Tạo đơn','_soNewOrder()'); return; }
-      _renderOrderList(_orders);
-    });
-  }
-
-  function _soSearch() {
-    clearTimeout(_soSearch._t);
-    _soSearch._t = setTimeout(function() { _loadOrders(_curStatus); }, 400);
-  }
-  window._soSearch = _soSearch;
-
-  function _soRefresh() {
-    var apiF = _api(); if (!apiF) return;
-
-    // Step 1: Kiem tra config
-    apiF('sapo_get_config', {}, function(e,d) {
-      if (!e && d && d.ok && !d.configured) {
-        _soShowSapoConfig(d);
-        return;
-      }
-
-      // Step 2: Test ket noi truoc khi sync
-      _toast('Dang kiem tra ket noi Sapo...','ok');
-      apiF('sapo_test', {}, function(et, dt) {
-        if (et || !dt || !dt.ok) {
-          var errMsg = (dt&&dt.error) || 'Ket noi Sapo that bai';
-          var guide  = (dt&&dt.guide) || 'Kiem tra SAPO_SHOP va SAPO_TOKEN trong sheet CaiDat';
-          _soShowSapoError(errMsg, guide);
-          return;
+    // Canvas chart by_day
+    var byDay = d.by_day||[];
+    var canvas = document.getElementById('so-chart');
+    if (canvas && byDay.length) {
+      var W = canvas.parentElement.clientWidth-28||300; var H=120;
+      canvas.width=W; canvas.height=H;
+      var ctx=canvas.getContext('2d');
+      ctx.fillStyle='#0d1020'; ctx.fillRect(0,0,W,H);
+      var maxV = Math.max.apply(null,byDay.map(function(d2){return d2.doanh_thu||0;}))||1;
+      var bw   = Math.max(4,Math.floor((W-20)/byDay.length)-3);
+      byDay.forEach(function(d2,di){
+        var x  = 20+di*(bw+3);
+        var hV = Math.round(((d2.doanh_thu||0)/maxV)*(H-25));
+        var grd = ctx.createLinearGradient(x,H-25-hV,x,H-25);
+        grd.addColorStop(0,'#4f6fff'); grd.addColorStop(1,'rgba(79,111,255,.2)');
+        ctx.fillStyle = grd;
+        ctx.beginPath(); ctx.roundRect(x,H-25-hV,bw,hV,3); ctx.fill();
+        if (di%3===0) {
+          ctx.fillStyle='#475569'; ctx.font='8px monospace'; ctx.textAlign='center';
+          var parts=(d2.ngay||'').split('-');
+          ctx.fillText((parts[2]||'')+'/'+(parts[1]||''),x+bw/2,H-4);
         }
+        if (d2.don>0) {
+          ctx.fillStyle='#94a3b8'; ctx.font='8px monospace'; ctx.textAlign='center';
+          ctx.fillText(String(d2.don),x+bw/2,H-25-hV-2);
+        }
+      });
+    }
 
-        // Step 3: Sync
-        _toast('Dang dong bo Sapo (' + ((dt&&dt.shop_name)||'') + ')...','ok');
-        apiF('sapo_sync_all', {}, function(e2,d2) {
-          if (e2||!d2||!d2.ok) {
-            _soShowSapoError((d2&&d2.error)||'Loi dong bo', (d2&&d2.guide)||'');
-            return;
-          }
-          var msg = d2.msg || ('Da dong bo ' + d2.synced + ' don');
-          if (d2.synced === 0) {
-            msg += ' - Shop co the chua co don hang hoac filter qua chat';
-          }
-          _toast(msg + (d2.errors ? ' (' + d2.errors + ' loi)' : ''),'ok');
-          _loadOrders(_curStatus);
-          _loadDashboard();
+    // Top 5 items
+    var top5El = document.getElementById('so-top5');
+    var top5   = d.top5_items||[];
+    if (top5El) {
+      if (!top5.length) { top5El.innerHTML='<div style="color:var(--text3);font-size:12px;">Chua co du lieu</div>'; }
+      else {
+        var maxSL = top5[0].so_luong||1;
+        top5El.innerHTML = top5.map(function(t,i){
+          var pct = Math.round((t.so_luong||0)/maxSL*100);
+          return '<div style="margin-bottom:7px;">'
+            +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">'
+              +'<span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;">'+(i+1)+'. '+_esc(t.ten||'')+'</span>'
+              +'<span style="color:var(--accent2);font-weight:700;">'+t.so_luong+'</span>'
+            +'</div>'
+            +'<div style="height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;">'
+              +'<div style="height:100%;width:'+pct+'%;background:var(--accent2);border-radius:99px;"></div>'
+            +'</div>'
+          +'</div>';
+        }).join('');
+      }
+    }
+    // Bind new button after shell rendered
+    _buildShellBindings();
+  });
+}
+
+// ── Danh sách đơn ─────────────────────────────────────────────────
+function _loadOrders(status) {
+  _SO.status = (status&&status!=='all')?status:(_SO.status||'all');
+  var el = document.getElementById('so-list'); if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai...</div>';
+  var apiF = _api(); if (!apiF) return;
+  apiF('sales_get_orders',{
+    search    : _SO.q||'',
+    from_date : _SO.from||'',
+    to_date   : _SO.to||'',
+    trang_thai: _SO.status==='all'?'':_SO.status,
+    page      : _SO.page||1,
+    limit     : 20,
+  },function(e,d){
+    if (e||!d||!d.ok) { el.innerHTML='<div style="color:var(--red);padding:16px;">Loi tai don hang</div>'; return; }
+    _SO.total = d.total||0;
+    _renderOrderList(d.data||[]);
+    _renderOrderPagination(_SO.total, 20);
+  });
+}
+
+function _renderOrderList(orders) {
+  var el = document.getElementById('so-list'); if (!el) return;
+  if (!orders.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);">'
+      +'<div style="font-size:32px;margin-bottom:10px;">&#x1F6D2;</div>'
+      +'<div style="font-size:14px;font-weight:700;">Chua co don hang nao</div>'
+    +'</div>';
+    return;
+  }
+  el.innerHTML = '<div style="border-radius:12px;border:1px solid var(--border);overflow:auto;">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:650px;">'
+    +'<thead><tr style="background:var(--bg3);">'
+      +'<th style="padding:8px;width:32px;"><input type="checkbox" id="so-all"></th>'
+      +'<th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">Ma don</th>'
+      +'<th style="padding:8px 12px;text-align:left;">Khach hang</th>'
+      +'<th style="padding:8px 12px;text-align:center;">Ngay</th>'
+      +'<th style="padding:8px 12px;text-align:right;">Tong tien</th>'
+      +'<th style="padding:8px 12px;text-align:right;color:#34d399;">Da thu</th>'
+      +'<th style="padding:8px 12px;text-align:right;color:#f87171;">Con no</th>'
+      +'<th style="padding:8px 12px;text-align:center;">Trang thai</th>'
+      +'<th style="padding:8px 12px;"></th>'
+    +'</tr></thead><tbody>'
+    +orders.map(function(o,oi){
+      var stClr  = ORDER_STATUS_COLORS[o.trang_thai]||'#64748b';
+      var stLbl  = ORDER_STATUS_LABELS[o.trang_thai]||o.trang_thai||'';
+      var conNo  = (o.tong_thanh_toan||0)-(o.da_thanh_toan||0);
+      return '<tr style="border-top:1px solid var(--border);">'
+        +'<td style="padding:8px;text-align:center;"><input type="checkbox" class="so-cb" data-id="'+_esc(o.ma_don||'')+'"></td>'
+        +'<td style="padding:8px 12px;font-weight:700;color:var(--accent2);font-family:monospace;font-size:11px;">'+_esc(o.ma_don||'')+'</td>'
+        +'<td style="padding:8px 12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+_esc(o.khach_ten||'')+'</td>'
+        +'<td style="padding:8px 12px;text-align:center;font-size:11px;color:var(--text3);">'+_esc((o.ngay||'').split('T')[0])+'</td>'
+        +'<td style="padding:8px 12px;text-align:right;font-weight:700;">'+_fmtM(o.tong_thanh_toan||0)+'d</td>'
+        +'<td style="padding:8px 12px;text-align:right;color:#34d399;font-weight:700;">'+_fmtM(o.da_thanh_toan||0)+'d</td>'
+        +'<td style="padding:8px 12px;text-align:right;color:'+(conNo>0?'#f87171':'#34d399')+';font-weight:700;">'+_fmtM(conNo)+'d</td>'
+        +'<td style="padding:8px 12px;text-align:center;">'
+          +'<span style="background:'+stClr+'22;color:'+stClr+';border-radius:5px;padding:2px 8px;font-size:10px;font-weight:800;">'+stLbl+'</span>'
+        +'</td>'
+        +'<td style="padding:8px 12px;text-align:center;" id="so-act-'+oi+'"></td>'
+      +'</tr>';
+    }).join('')
+    +'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:right;">'+_SO.total+' don hang</div>';
+
+  // Select all
+  var allCb = document.getElementById('so-all');
+  if (allCb) allCb.addEventListener('change',function(){
+    document.querySelectorAll('.so-cb').forEach(function(c){c.checked=this.checked;},this);
+    _soUpdBulk();
+  });
+  document.querySelectorAll('.so-cb').forEach(function(cb){cb.addEventListener('change',_soUpdBulk);});
+
+  // Action buttons
+  orders.forEach(function(o,oi){
+    var td = document.getElementById('so-act-'+oi); if (!td) return;
+    var detBtn = document.createElement('button');
+    detBtn.textContent='Chi tiet';
+    detBtn.style.cssText='background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;margin-right:3px;';
+    detBtn.addEventListener('click',function(){ _soShowDetail(o.ma_don||o.id); });
+    td.appendChild(detBtn);
+    if (o.trang_thai==='hoan_thanh'||o.trang_thai==='huy') return;
+    var nextSt = ORDER_WORKFLOW[ORDER_WORKFLOW.indexOf(o.trang_thai)+1];
+    if (nextSt) {
+      var nextBtn = document.createElement('button');
+      nextBtn.textContent='→ '+(ORDER_STATUS_LABELS[nextSt]||nextSt);
+      nextBtn.style.cssText='background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);color:#34d399;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;';
+      nextBtn.addEventListener('click',(function(maDon,st){ return function(){
+        var apiF=_api();if(!apiF)return;
+        nextBtn.disabled=true;
+        apiF('sales_update_order_status',{ma_don:maDon,trang_thai:st},function(e,d){
+          if(!e&&d&&d.ok){ _toast('Cap nhat trang thai thanh cong','ok'); _loadOrders(_SO.status); }
+          else{ nextBtn.disabled=false; _toast((d&&d.error)||'Loi','error'); }
+        });
+      };})(o.ma_don||o.id, nextSt));
+      td.appendChild(nextBtn);
+    }
+  });
+}
+
+function _soUpdBulk() {
+  var sel = Array.from(document.querySelectorAll('.so-cb:checked'));
+  var bar = document.getElementById('so-bulk-bar');
+  var cnt = document.getElementById('so-bulk-cnt');
+  if (cnt) cnt.textContent = sel.length+' don duoc chon';
+  if (bar) bar.style.display = sel.length>0 ? 'flex' : 'none';
+}
+
+function _soBulkStatus() {
+  var sel = Array.from(document.querySelectorAll('.so-cb:checked'));
+  if (!sel.length) { _toast('Chon it nhat 1 don','error'); return; }
+  var newSt = (document.getElementById('so-bulk-status')||{}).value||'';
+  if (!newSt) { _toast('Chon trang thai','error'); return; }
+  if (!confirm('Doi '+sel.length+' don sang "'+ORDER_STATUS_LABELS[newSt]+'"?')) return;
+  var apiF=_api();if(!apiF)return;
+  var done=0, ok=0;
+  sel.forEach(function(cb){
+    var ma=cb.getAttribute('data-id');
+    apiF('sales_update_order_status',{ma_don:ma,trang_thai:newSt},function(e,d){
+      if(!e&&d&&d.ok) ok++;
+      done++;
+      if(done===sel.length){ _toast('Da doi '+ok+'/'+sel.length+' don','ok'); _loadOrders(_SO.status); }
+    });
+  });
+}
+
+// ── Pagination ────────────────────────────────────────────────────
+function _renderOrderPagination(total, limit) {
+  var el=document.getElementById('so-pagination');if(!el)return;
+  var pages=Math.ceil(total/limit)||1; if(pages<=1){el.innerHTML='';return;}
+  var h='',s=Math.max(1,_SO.page-2),e=Math.min(pages,_SO.page+2);
+  if(s>1) h+='<button onclick="window._soPage(1)" style="'+_pgBtnSO(false)+'">1</button><span style="color:var(--text3);padding:0 4px;">...</span>';
+  for(var p=s;p<=e;p++) h+='<button onclick="window._soPage('+p+')" style="'+_pgBtnSO(_SO.page===p)+'">'+p+'</button>';
+  if(e<pages) h+='<span style="color:var(--text3);padding:0 4px;">...</span><button onclick="window._soPage('+pages+')" style="'+_pgBtnSO(false)+'">'+pages+'</button>';
+  el.innerHTML=h;
+}
+function _pgBtnSO(a){ return 'background:'+(a?'var(--accent2)':'var(--bg3)')+';border:1px solid var(--border2);color:'+(a?'#fff':'var(--text2)')+';border-radius:7px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;'; }
+window._soPage=function(p){ _SO.page=p; _loadOrders(_SO.status); };
+
+// ── Chi tiết đơn hàng ─────────────────────────────────────────────
+function _soShowDetail(maDon) {
+  var apiF=_api();if(!apiF)return;
+  var ov=document.createElement('div'); ov.id='so-detail-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;';
+  ov.addEventListener('click',function(e){if(e.target===ov)ov.remove();});
+  var box=document.createElement('div');
+  box.style.cssText='background:var(--bg2);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:660px;max-height:90vh;overflow-y:auto;';
+  box.innerHTML='<div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">'
+    +'<span style="font-size:14px;font-weight:900;">&#x1F4CB; Chi tiet don hang</span>'
+    +'<button id="so-det-close" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:20px;">&#xd7;</button>'
+  +'</div>'
+  +'<div id="so-det-body" style="padding:20px;">'
+    +'<div style="text-align:center;padding:20px;color:var(--text3);">Dang tai...</div>'
+  +'</div>';
+  ov.appendChild(box); document.body.appendChild(ov);
+  box.querySelector('#so-det-close').addEventListener('click',function(){ov.remove();});
+
+  apiF('sales_get_order_detail',{ma_don:maDon},function(e,d){
+    var db=document.getElementById('so-det-body');if(!db)return;
+    if(e||!d||!d.ok){db.innerHTML='<p style="color:var(--red);">Loi tai chi tiet</p>';return;}
+    var o=d.order||{}; var items=d.items||[]; var hist=d.history||[];
+    var stClr=ORDER_STATUS_COLORS[o.trang_thai]||'#64748b';
+    var stLbl=ORDER_STATUS_LABELS[o.trang_thai]||o.trang_thai||'';
+    var stIdx=ORDER_WORKFLOW.indexOf(o.trang_thai);
+
+    // Timeline
+    var tlHtml='<div style="display:flex;align-items:center;overflow-x:auto;padding:4px 0;margin-bottom:14px;">'
+      +ORDER_WORKFLOW.map(function(st,i){
+        var done=i<stIdx; var cur=i===stIdx;
+        var clr=cur?'var(--accent2)':(done?'#34d399':'var(--text3)');
+        return '<div style="display:flex;align-items:center;flex-shrink:0;">'
+          +'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
+            +'<div style="width:28px;height:28px;border-radius:50%;border:2px solid '+clr+';background:'+(cur?'var(--accent2)':(done?'rgba(52,211,153,.15)':'var(--bg3)'))+';display:flex;align-items:center;justify-content:center;font-size:10px;color:'+(cur||done?'#fff':'var(--text3)'+';')+'">'+(done?'&#x2713;':(cur?'&#x25CF;':''))+'</div>'
+            +'<div style="font-size:8px;color:'+clr+';font-weight:'+(cur?900:400)+';white-space:nowrap;">'+ORDER_STATUS_LABELS[st]+'</div>'
+          +'</div>'
+          +(i<ORDER_WORKFLOW.length-1?'<div style="height:2px;width:22px;background:'+(done?'#34d399':'var(--border2)')+';margin:0 3px;margin-bottom:12px;flex-shrink:0;"></div>':'')
+        +'</div>';
+      }).join('')
+    +'</div>';
+
+    // Info
+    var infoHtml='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">'
+      +'<div style="background:var(--bg3);border-radius:10px;padding:12px;">'
+        +'<div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Thong tin don</div>'
+        +[['Ma don',o.ma_don||''],['Ngay tao',(o.ngay||'').split('T')[0]],
+          ['Trang thai',stLbl],['Ghi chu',o.ghi_chu||'—']
+        ].map(function(r){
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;">'
+            +'<span style="color:var(--text3);">'+_esc(r[0])+'</span>'
+            +'<span style="font-weight:700;color:var(--text);">'+_esc(r[1])+'</span>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+      +'<div style="background:var(--bg3);border-radius:10px;padding:12px;">'
+        +'<div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">Khach hang</div>'
+        +[['Ten KH',o.khach_ten||''],['SĐT',o.sdt||'—'],['Dia chi',o.dia_chi||'—']
+        ].map(function(r){
+          return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;">'
+            +'<span style="color:var(--text3);">'+_esc(r[0])+'</span>'
+            +'<span style="font-weight:700;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;">'+_esc(r[1])+'</span>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+    +'</div>';
+
+    // Items table
+    var itemsHtml='<div style="margin-bottom:14px;">'
+      +'<div style="font-size:10px;font-weight:800;color:var(--text3);text-transform:uppercase;margin-bottom:8px;">San pham ('+items.length+')</div>'
+      +'<div style="border-radius:10px;border:1px solid var(--border);overflow:auto;">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+      +'<thead><tr style="background:var(--bg3);">'
+        +'<th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:800;color:var(--text3);">SP</th>'
+        +'<th style="padding:7px 10px;text-align:center;">SL</th>'
+        +'<th style="padding:7px 10px;text-align:right;">Don gia</th>'
+        +'<th style="padding:7px 10px;text-align:right;">Thanh tien</th>'
+      +'</tr></thead><tbody>'
+      +items.map(function(it){
+        return '<tr style="border-top:1px solid var(--border);">'
+          +'<td style="padding:7px 10px;">'+_esc(it.ten_sp||'')+'</td>'
+          +'<td style="padding:7px 10px;text-align:center;font-weight:700;">'+_esc(String(it.so_luong||0))+'</td>'
+          +'<td style="padding:7px 10px;text-align:right;color:var(--text3);">'+_fmtM(it.don_gia||0)+'d</td>'
+          +'<td style="padding:7px 10px;text-align:right;font-weight:700;color:var(--green);">'+_fmtM(it.thanh_tien||0)+'d</td>'
+        +'</tr>';
+      }).join('')
+      +'</tbody></table></div>'
+    +'</div>';
+
+    // Totals
+    var conNo=(o.tong_thanh_toan||0)-(o.da_thanh_toan||0);
+    var totalsHtml='<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:14px;">'
+      +[['Tong goc',_fmtM(o.tong_goc||0)+'d'],['Chiet khau',_fmtM(o.chiet_khau||0)+'d'],
+        ['Phi GH',_fmtM(o.phi_gh||0)+'d'],['Tong thanh toan',_fmtM(o.tong_thanh_toan||0)+'d'],
+        ['Da thu',_fmtM(o.da_thanh_toan||0)+'d'],['Con no',_fmtM(conNo)+'d']
+      ].map(function(r,i){
+        var isTotal=i>=3; var isDebt=i===5&&conNo>0;
+        return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:'+(isTotal?'13':'12')+'px;font-weight:'+(isTotal?900:400)+';">'
+          +'<span style="color:'+(isTotal?'var(--text)':'var(--text3)')+'">'+r[0]+'</span>'
+          +'<span style="color:'+(isDebt?'#f87171':(i===4?'#34d399':'var(--text)'))+'">'+r[1]+'</span>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+
+    // Action buttons
+    var nextSt = ORDER_WORKFLOW[stIdx+1];
+    var actHtml='<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+      +(nextSt?'<button id="so-det-next" style="background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);color:#34d399;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">→ Chuyen: '+ORDER_STATUS_LABELS[nextSt]+'</button>':'')
+      +(conNo>0?'<button id="so-det-pay" style="background:var(--accent);border:none;color:#fff;border-radius:9px;padding:9px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">&#x1F4B5; Thu tien ('+_fmtM(conNo)+'d)</button>':'')
+    +'</div>';
+
+    db.innerHTML = tlHtml + infoHtml + itemsHtml + totalsHtml + actHtml;
+
+    if (nextSt) {
+      var nb=db.querySelector('#so-det-next');
+      if(nb) nb.addEventListener('click',function(){
+        var apiF2=_api();if(!apiF2)return;
+        nb.disabled=true;
+        apiF2('sales_update_order_status',{ma_don:maDon,trang_thai:nextSt},function(e2,d2){
+          if(!e2&&d2&&d2.ok){ ov.remove(); _toast('Da doi sang: '+ORDER_STATUS_LABELS[nextSt],'ok'); _loadOrders(_SO.status); }
+          else{ nb.disabled=false; _toast((d2&&d2.error)||'Loi','error'); }
         });
       });
-    });
-  }
-
-  /* Hien loi Sapo voi huong dan */
-  function _soShowSapoError(errMsg, guide) {
-    var ct = _ct(); if (!ct) return;
-    var div = document.createElement('div');
-    div.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9990;max-width:400px;'
-      + 'background:rgba(255,77,109,.08);border:1px solid rgba(255,77,109,.3);border-radius:14px;'
-      + 'padding:16px 18px;box-shadow:0 8px 32px rgba(0,0,0,.4);';
-    div.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
-      + '<div style="font-size:13px;font-weight:800;color:#ff4d6d;">Loi ket noi Sapo</div>'
-      + '<button id="sapo-err-close" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">x</button>'
-      + '</div>'
-      + '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">' + errMsg + '</div>'
-      + (guide ? '<div style="font-size:11px;color:var(--text3);background:rgba(0,0,0,.2);border-radius:8px;padding:8px;">' + guide + '</div>' : '')
-      + '<button id="sapo-err-debug" style="margin-top:10px;width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:8px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;color:var(--text2);font-family:inherit;">Xem chi tiet ket noi</button>';
-    document.body.appendChild(div);
-
-    document.getElementById('sapo-err-close').addEventListener('click', function(){ div.parentNode.removeChild(div); });
-    document.getElementById('sapo-err-debug').addEventListener('click', function(){
-      var apiF = _api(); if (!apiF) return;
-      this.textContent = 'Dang kiem tra...';
-      var self = this;
-      apiF('sapo_status', {}, function(e,d){
-        self.textContent = 'Xem chi tiet ket noi';
-        if (e||!d) return;
-        var dbg = d.debug || {};
-        var info = ['SAPO DEBUG:', 'Shop: '+dbg.shop, 'URL: '+dbg.base_url, 'Shop test: '+dbg.shop_test, 'Orders count: '+dbg.orders_count, 'First order: '+dbg.first_order_test].join(String.fromCharCode(10));
-        if (dbg.sample_fields) info += String.fromCharCode(10)+'Sample: '+JSON.stringify(dbg.sample_fields);
-        alert(info);
+    }
+    if (conNo>0) {
+      var pb=db.querySelector('#so-det-pay');
+      if(pb) pb.addEventListener('click',function(){
+        var apiF3=_api();if(!apiF3)return;
+        pb.disabled=true;pb.textContent='Dang xu ly...';
+        apiF3('sales_update_payment',{ma_don:maDon,so_tien:conNo},function(e3,d3){
+          if(!e3&&d3&&d3.ok){ ov.remove(); _toast('Da thu '+_fmtM(conNo)+'d','ok'); _loadOrders(_SO.status); }
+          else{ pb.disabled=false;pb.innerHTML='&#x1F4B5; Thu tien ('+_fmtM(conNo)+'d)'; _toast((d3&&d3.error)||'Loi','error'); }
+        });
       });
-    });
-  }
-  window._soRefresh = _soRefresh;
+    }
+  });
+}
 
-  function _soShowSapoConfig(info) {
-    var html = '<div class="sk-modal-hd">'
-      + '<div style="font-size:15px;font-weight:900;">⚙️ Cài đặt kết nối Sapo</div>'
-      + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
-      + '<div class="sk-modal-bd">'
-      + '<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:10px;padding:14px;margin-bottom:16px;">'
-      + '<div style="font-size:12px;font-weight:800;color:var(--yellow);margin-bottom:6px;">⚠️ Chưa cấu hình Sapo API</div>'
-      + '<div style="font-size:11px;color:var(--text3);">Nhập thông tin từ Admin Sapo → Ứng dụng → Private Apps</div>'
-      + '</div>'
-      + '<div class="sk-form-grid">'
-      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Tên shop Sapo (subdomain)</label>'
-      + '<input class="form-input" id="sapo-shop" placeholder="vd: sonkhang (trong sonkhang.mysapogo.com)" value="'+((info&&info.shop)||'')+'"></div>'
-      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Access Token (Private App)</label>'
-      + '<input class="form-input" id="sapo-token" type="password" placeholder="shpat_xxxxxxxxxxxx"></div>'
-      + '</div></div>'
-      + '<div class="sk-modal-ft">'
-      + '<button class="btn-ghost" onclick="closeSalesModal()">Hủy</button>'
-      + '<button class="btn-ghost" onclick="_sapoTestConn()" style="font-size:12px;">🔍 Test kết nối</button>'
-      + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu & Đồng bộ</button>'
-      + '</div>';
-    _soModal(html);
-  }
-  window._soShowSapoConfig = _soShowSapoConfig;
+function _fmtM(n){ n=Number(n||0); if(n>=1e9)return(n/1e9).toFixed(1)+'ty'; if(n>=1e6)return(n/1e6).toFixed(1)+'tr'; if(n>=1e3)return Math.round(n/1e3)+'k'; return String(Math.round(n)); }
+function _toast(m,t){ if(typeof window.skToast==='function')window.skToast(m,t||'ok'); else if(typeof window._hrmToast==='function')window._hrmToast(m,t); }
 
-  function _soShowSapoConfigGuide(d) {
-    var steps = (d.steps||[]).join('</div><div style="padding:5px 0;font-size:11px;">');
-    var html = '<div class="sk-modal-hd">'
-      + '<div style="font-size:15px;font-weight:900;">⚙️ Hướng dẫn cài đặt Sapo</div>'
-      + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
-      + '<div class="sk-modal-bd">'
-      + '<div style="font-size:12px;color:var(--red);margin-bottom:12px;">'+_esc(d.error||'')+'</div>'
-      + '<div style="background:var(--bg3);border-radius:10px;padding:14px;">'
-      + '<div style="font-size:11px;font-weight:800;color:var(--text3);margin-bottom:8px;">HƯỚNG DẪN:</div>'
-      + '<div style="padding:5px 0;font-size:11px;">'+steps+'</div>'
-      + '</div>'
-      + '<div style="margin-top:16px;" class="sk-form-grid">'
-      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Tên shop</label>'
-      + '<input class="form-input" id="sapo-shop" placeholder="tenShop (không có .mysapogo.com)"></div>'
-      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Access Token</label>'
-      + '<input class="form-input" id="sapo-token" type="password" placeholder="Token từ Sapo Admin"></div>'
-      + '</div></div>'
-      + '<div class="sk-modal-ft">'
-      + '<button class="btn-ghost" onclick="closeSalesModal()">Đóng</button>'
-      + '<button class="btn-primary" onclick="_sapoSaveConfig()" style="font-size:12px;">💾 Lưu config</button>'
-      + '</div>';
-    _soModal(html);
-  }
+window.loadDonHang = loadDonHang;
 
-  function _sapoTestConn() {
-    var apiF = _api(); if (!apiF) return;
-    var shop  = document.getElementById('sapo-shop')  ? document.getElementById('sapo-shop').value  : '';
-    var token = document.getElementById('sapo-token') ? document.getElementById('sapo-token').value : '';
-    if (!shop||!token) { _toast('Nhập Shop và Token','error'); return; }
-    // Luu tam roi test
-    apiF('sapo_save_config',{shop:shop,token:token},function(e,d){
-      if(e||!d||!d.ok){_toast('Lỗi lưu config','error');return;}
-      apiF('sapo_test',{},function(e2,d2){
-        if(e2||!d2||!d2.ok){_toast((d2&&d2.error)||'Kết nối thất bại','error');return;}
-        _toast('✅ Kết nối thành công: '+( d2.shop_name||'OK' ),'ok');
-      });
-    });
-  }
-  window._sapoTestConn = _sapoTestConn;
 
-  function _sapoSaveConfig() {
-    var apiF = _api(); if (!apiF) return;
-    var shop  = document.getElementById('sapo-shop')  ? document.getElementById('sapo-shop').value  : '';
-    var token = document.getElementById('sapo-token') ? document.getElementById('sapo-token').value : '';
-    if (!shop||!token) { _toast('Nhập đủ Shop và Token','error'); return; }
-    apiF('sapo_save_config',{shop:shop,token:token},function(e,d){
-      if(e||!d||!d.ok){_toast((d&&d.error)||'Lỗi','error');return;}
-      _toast('✅ Đã lưu config Sapo. Đang đồng bộ...','ok');
-      if(typeof window.closeSalesModal==='function') window.closeSalesModal();
-      _soRefresh();
-    });
-  }
-  window._sapoSaveConfig = _sapoSaveConfig;
-
-  /* ── Render Order List ────────────────────────────────────── */
-  function _renderOrderList(orders) {
-    var el = document.getElementById('so-list'); if (!el) return;
-    el.innerHTML = '<div class="sk-table-wrap">'
-      + '<table class="sk-table">'
-      + '<thead><tr>'
-      + '<th>Mã đơn</th><th>Khách hàng</th><th>Ngày</th>'
-      + '<th>Tổng tiền</th><th>Đã TT</th><th>Còn nợ</th>'
-      + '<th>Trạng thái</th><th>Nguồn</th><th style="width:100px;"></th>'
-      + '</tr></thead>'
-      + '<tbody>'
-      + orders.map(function(o) {
-          var col   = (window.ORDER_COLORS||{})[o.trang_thai]||'#6b7a99';
-          var icon  = (window.ORDER_ICONS||{})[o.trang_thai]||'•';
-          var label = STATUS_LABEL[o.trang_thai]||o.trang_thai;
-          var conNo = Number(o.con_no||0);
-          var sapoIcon = o.sapo_id ? '🔗' : '';
-          return '<tr>'
-            + '<td><strong style="color:var(--accent2);cursor:pointer;" onclick="_soDetail(\''+_esc(o.id)+'\')">'+_esc(o.ma_don)+'</strong></td>'
-            + '<td>'+_esc(o.khach_ten||'—')+'</td>'
-            + '<td style="color:var(--text3);font-size:11px;">'+_esc(o.ngay||'')+'</td>'
-            + '<td style="font-weight:800;color:var(--text);">'+( typeof window.fmtMoney==='function'?window.fmtMoney(o.tong_tt):o.tong_tt )+'</td>'
-            + '<td style="color:var(--green);">'+( typeof window.fmtMoney==='function'?window.fmtMoney(o.da_tt):o.da_tt )+'</td>'
-            + '<td style="color:'+(conNo>0?'var(--red)':'var(--text3)')+';">'+(conNo>0?(typeof window.fmtMoney==='function'?window.fmtMoney(conNo):conNo):'—')+'</td>'
-            + '<td><span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:800;background:'+col+'22;border:1px solid '+col+'55;color:'+col+';">'+icon+' '+_esc(label)+'</span></td>'
-            + '<td style="font-size:11px;color:var(--text3);">'+sapoIcon+(o.sapo_id?'Sapo':'ERP')+'</td>'
-            + '<td><div style="display:flex;gap:4px;">'
-            +   '<button class="btn-ghost" onclick="_soDetail(\''+_esc(o.id)+'\')" style="padding:5px 8px;font-size:10px;">👁</button>'
-            +   (o.trang_thai==='cho_xac_nhan'?'<button class="btn-primary" onclick="_soConfirm(\''+_esc(o.id)+'\')" style="padding:5px 8px;font-size:10px;">✅</button>':'')
-            +   (o.trang_thai==='da_xac_nhan'||o.trang_thai==='da_giao'?'<button class="btn-ghost" onclick="_soDelivery(\''+_esc(o.id)+'\')" style="padding:5px 8px;font-size:10px;">🚚</button>':'')
-            + '</div></td>'
-            + '</tr>';
-        }).join('')
-      + '</tbody></table></div>';
-  }
-
-  /* [v5.25.1 FIX] BUG-2: Helper an toàn — trả null nếu modal đã đóng (race condition) */
-  function _getModalBox() {
-    return document.querySelector('.sk-modal-box')
-        || document.querySelector('#sk-sales-modal > div');
-  }
-
-  /* ── Order Detail Modal ───────────────────────────────────── */
-  function _soDetail(id) {
-    _curOrderId = id;
-    window.showSalesModal(window.salesLoading('Đang tải chi tiết...'), 'lg');
-    var apiF = _api(); if (!apiF) return;
-    apiF('sales_get_order_detail', { id:id }, function(e,d) {
-      if (e||!d||!d.ok) {
-        // [v5.25.1 FIX] BUG-2: guard null — modal có thể đã đóng trước khi callback return
-        var _errBox = _getModalBox();
-        if (_errBox) _errBox.innerHTML='<div style="padding:24px;color:var(--red);">Lỗi: '+_esc(String(d&&d.error||e||'Unknown error'))+'</div>';
-        return;
-      }
-      var o = d.order; var items = d.items||[]; var history = d.history||[];
-      var col   = (window.ORDER_COLORS||{})[o.trang_thai]||'#6b7a99';
-      var label = STATUS_LABEL[o.trang_thai]||o.trang_thai;
-      var conNo = Number(o.con_no||0);
-
-      var html = '<div class="sk-modal-hd">'
-        + '<div><div style="font-size:16px;font-weight:900;">📋 '+_esc(o.ma_don)+'</div>'
-        + '<div style="font-size:11px;color:var(--text3);">'+_esc(o.ngay||'')+'</div></div>'
-        + '<div style="display:flex;gap:8px;align-items:center;">'
-        + '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:800;background:'+col+'22;border:1px solid '+col+'55;color:'+col+';">'+(window.ORDER_ICONS||{})[o.trang_thai]+' '+_esc(label)+'</span>'
-        + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;font-size:12px;">✕</button>'
-        + '</div></div>'
-        + '<div class="sk-modal-bd">'
-
-        /* Hành động */
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">'
-        + _actionBtns(o)
-        + '</div>'
-
-        /* Info 2 cột */
-        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">'
-        + '<div class="card" style="padding:14px;">'
-        + '<div class="sk-lbl" style="margin-bottom:8px;">Khách hàng</div>'
-        + _infoRow('Tên', o.khach_ten) + _infoRow('Địa chỉ GH', o.dia_chi_gh||'—')
-        + _infoRow('PT thanh toán', o.pt_tt) + _infoRow('Ghi chú', o.ghi_chu||'—')
-        + (o.sapo_id?_infoRow('Sapo ID','#'+o.sapo_id):'')
-        + '</div>'
-        + '<div class="card" style="padding:14px;">'
-        + '<div class="sk-lbl" style="margin-bottom:8px;">Thanh toán</div>'
-        + _infoRow('Tổng đơn',   typeof window.fmtMoney==='function'?window.fmtMoney(o.tong_tt):o.tong_tt)
-        + _infoRow('Đã thanh toán', typeof window.fmtMoney==='function'?window.fmtMoney(o.da_tt):o.da_tt, 'var(--green)')
-        + (conNo>0?_infoRow('Còn nợ',typeof window.fmtMoney==='function'?window.fmtMoney(conNo):conNo,'var(--red)'):'')
-        + (conNo>0?'<button class="btn-primary" onclick="_soRecordPayment(\''+_esc(o.id)+'\')" style="margin-top:10px;font-size:11px;width:100%;">💰 Ghi nhận thanh toán</button>':'')
-        + '</div>'
-        + '</div>'
-
-        /* Sản phẩm */
-        + '<div class="card" style="padding:14px;margin-bottom:12px;">'
-        + '<div class="sk-lbl" style="margin-bottom:8px;">Sản phẩm</div>'
-        + '<div class="sk-table-wrap"><table class="sk-table">'
-        + '<thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>CK</th><th>Thành tiền</th></tr></thead>'
-        + '<tbody>'+items.map(function(it) {
-            return '<tr>'
-              +'<td><div style="font-weight:700;">'+_esc(it.ten_sp)+'</div><div style="font-size:10px;color:var(--text3);">'+_esc(it.don_vi||'')+'</div></td>'
-              +'<td>'+it.sl+'</td>'
-              +'<td>'+(typeof window.fmtMoney==='function'?window.fmtMoney(it.don_gia):it.don_gia)+'</td>'
-              +'<td>'+(it.chiet_khau>0?'-'+(typeof window.fmtMoney==='function'?window.fmtMoney(it.chiet_khau):it.chiet_khau):'—')+'</td>'
-              +'<td style="font-weight:800;">'+(typeof window.fmtMoney==='function'?window.fmtMoney(it.thanh_tien):it.thanh_tien)+'</td>'
-              +'</tr>';
-          }).join('')+'</tbody></table></div></div>'
-
-        /* Lịch sử */
-        + (history.length?'<div class="card" style="padding:14px;">'
-          + '<div class="sk-lbl" style="margin-bottom:8px;">📜 Lịch sử</div>'
-          + history.map(function(h) {
-              return '<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px;">'
-                + '<span style="color:var(--text3);white-space:nowrap;">'+_esc(h.ngay)+'</span>'
-                + '<span style="font-weight:700;color:var(--accent2);">'+_esc(h.hanh_dong)+'</span>'
-                + (h.moi?'<span style="color:var(--text3);">→ '+_esc(h.moi)+'</span>':'')
-                + '<span style="margin-left:auto;color:var(--text3);">'+_esc(h.nguoi)+'</span>'
-                + '</div>';
-            }).join('')
-          +'</div>':'')
-        + '</div>';
-
-      // [v5.25.1 FIX] BUG-2: guard null — tránh crash nếu modal đóng trong lúc chờ API
-      var _box = _getModalBox();
-      if (!_box) return;  // Modal đã bị đóng bởi user → bỏ qua kết quả
-      _box.innerHTML = html;
-    });
-  }
-  window._soDetail = _soDetail;
-
-  function _infoRow(label, val, color) {
-    return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">'
-      + '<span style="color:var(--text3);">'+_esc(label)+'</span>'
-      + '<span style="font-weight:600;'+(color?'color:'+color+';':'')+' text-align:right;max-width:55%;">'+_esc(String(val||'—'))+'</span></div>';
-  }
-
-  function _actionBtns(o) {
-    var btns = '';
-    if (o.trang_thai==='cho_xac_nhan')
-      btns += '<button class="btn-primary" onclick="_soChangeStatus(\''+o.id+'\',\'da_xac_nhan\')" style="font-size:11px;">✅ Xác nhận đơn</button>';
-    if (o.trang_thai==='da_xac_nhan'||o.trang_thai==='cho_xac_nhan')
-      btns += '<button class="btn-ghost" onclick="_soDelivery(\''+o.id+'\')" style="font-size:11px;">🚚 Tạo lệnh giao</button>';
-    if (o.trang_thai==='dang_giao'||o.trang_thai==='da_xac_nhan')
-      btns += '<button class="btn-ghost" onclick="_soCreateInvoice(\''+o.id+'\')" style="font-size:11px;">🧾 Xuất hóa đơn VAT</button>';
-    if (o.trang_thai!=='huy'&&o.trang_thai!=='hoan_thanh')
-      btns += '<button class="btn-ghost" onclick="_soChangeStatus(\''+o.id+'\',\'huy\')" style="font-size:11px;color:var(--red);">❌ Hủy đơn</button>';
-    return btns;
-  }
-
-  /* ── Tạo đơn hàng mới ─────────────────────────────────────── */
-  function _soNewOrder() {
-    _cartItems = [];
-    _loadOrderForm(null);
-  }
-  window._soNewOrder = _soNewOrder;
-
-  function _loadOrderForm(existingId) {
+function _loadOrderForm(existingId) {
     var apiF = _api(); if (!apiF) return;
     /* Load sản phẩm và khách hàng song song */
     var products = [], customers = [];
@@ -497,7 +538,7 @@
     });
   }
 
-  function _renderOrderForm(products, customers) {
+function _renderOrderForm(products, customers) {
     var todayV = new Date().toISOString().split('T')[0];
     var prodOpts = '<option value="">-- Chọn sản phẩm --</option>'
       + products.map(function(p) {
@@ -565,8 +606,7 @@
     _renderCart();
   }
 
-  /* Cart */
-  function _soAddToCart() {
+function _soAddToCart() {
     var sel    = document.getElementById('so-add-sp'); if (!sel||!sel.value) return;
     var opt    = sel.options[sel.selectedIndex];
     var spId   = sel.value;
@@ -581,9 +621,8 @@
     _cartItems.push({ sp_id:spId, ten_sp:ten, sl:qty, don_gia:price, don_vi:unit });
     _renderCart();
   }
-  window._soAddToCart = _soAddToCart;
 
-  function _renderCart() {
+function _renderCart() {
     var el = document.getElementById('so-cart'); if (!el) return;
     if (!_cartItems.length) { el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:12px;">Chưa có sản phẩm</div>'; _soCalcTotal(); return; }
     el.innerHTML = '<div class="sk-table-wrap"><table class="sk-table"><thead><tr>'
@@ -602,19 +641,16 @@
       + '</tbody></table></div>';
     _soCalcTotal();
   }
-  window._soCartQty    = function(i,v){ if(_cartItems[i]) { _cartItems[i].sl=Number(v)||1; _renderCart(); } };
-  window._soCartRemove = function(i){ _cartItems.splice(i,1); _renderCart(); };
 
-  function _soCalcTotal() {
+function _soCalcTotal() {
     var sub   = _cartItems.reduce(function(s,it){ return s+it.sl*it.don_gia; },0);
     var phi   = Number(_gv('so-phi-gh')||0);
     var grand = sub + phi;
     var el    = document.getElementById('so-grand');
     if (el) el.textContent = typeof window.fmtMoney==='function'?window.fmtMoney(grand):grand+'đ';
   }
-  window._soCalcTotal = _soCalcTotal;
 
-  function _soSubmitOrder(status) {
+function _soSubmitOrder(status) {
     if (!_cartItems.length) { _toast('Thêm sản phẩm trước','error'); return; }
     var khId = _gv('so-kh-sel');
     if (!khId) { _toast('Chọn khách hàng','error'); return; }
@@ -638,17 +674,14 @@
       _loadDashboard();
     });
   }
-  window._soSubmitOrder = _soSubmitOrder;
 
-  /* ── Xác nhận / Hủy đơn ──────────────────────────────────── */
-  function _soConfirm(id) {
+function _soConfirm(id) {
     window.salesConfirm('Xác nhận đơn hàng này?', function() {
       _soChangeStatus(id,'da_xac_nhan');
     });
   }
-  window._soConfirm = _soConfirm;
 
-  function _soChangeStatus(id, status) {
+function _soChangeStatus(id, status) {
     var apiF = _api(); if (!apiF) return;
     apiF('sales_update_order_status', { id:id, status:status }, function(e,d) {
       if (e||!d||!d.ok) { _toast((d&&d.error)||'Lỗi','error'); return; }
@@ -658,10 +691,8 @@
       _loadDashboard();
     });
   }
-  window._soChangeStatus = _soChangeStatus;
 
-  /* ── Ghi nhận thanh toán ─────────────────────────────────── */
-  function _soRecordPayment(id) {
+function _soRecordPayment(id) {
     var html = '<div class="sk-modal-hd"><div style="font-size:15px;font-weight:900;">💰 Ghi nhận thanh toán</div>'
       + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
       + '<div class="sk-modal-bd"><div class="sk-form-grid">'
@@ -677,9 +708,8 @@
       + '<button class="btn-primary" onclick="_soDoPayment(\''+_esc(id)+'\')" style="font-size:12px;">💰 Xác nhận</button></div>';
     window.showSalesModal(html);
   }
-  window._soRecordPayment = _soRecordPayment;
 
-  function _soDoPayment(id) {
+function _soDoPayment(id) {
     var amount = Number(_gv('sp-amount')||0);
     if (amount<=0) { _toast('Nhập số tiền','error'); return; }
     var apiF = _api(); if (!apiF) return;
@@ -691,10 +721,8 @@
       _loadDashboard();
     });
   }
-  window._soDoPayment = _soDoPayment;
 
-  /* ── Tạo lệnh giao hàng ──────────────────────────────────── */
-  function _soDelivery(orderId) {
+function _soDelivery(orderId) {
     var todayV = new Date().toISOString().split('T')[0];
     var html = '<div class="sk-modal-hd"><div style="font-size:15px;font-weight:900;">🚚 Tạo lệnh giao hàng</div>'
       + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
@@ -710,45 +738,8 @@
       + '<button class="btn-primary" onclick="_soDoDelivery(\''+_esc(orderId)+'\')" style="font-size:12px;">🚚 Tạo lệnh giao</button></div>';
     window.showSalesModal(html);
   }
-  window._soDelivery = _soDelivery;
 
-  function _soDoDelivery(orderId) {
-    var apiF = _api(); if (!apiF) return;
-    apiF('sales_create_delivery', {
-      don_id   : orderId,
-      dia_chi  : _gv('del-addr'),
-      ngay_giao: _gv('del-date'),
-      ghi_chu  : _gv('del-note')
-    }, function(e,d) {
-      if (e||!d||!d.ok) { _toast((d&&d.error)||'Lỗi','error'); return; }
-      _toast('✅ Đã tạo lệnh giao: '+d.id+(d.driver_id?' — Tài xế: '+d.driver_id:''),'ok');
-      window.closeSalesModal();
-      _loadOrders(_curStatus);
-    });
-  }
-  window._soDoDelivery = _soDoDelivery;
-
-  /* ── Xuất hóa đơn VAT ────────────────────────────────────── */
-  function _soCreateInvoice(orderId) {
-    var html = '<div class="sk-modal-hd"><div style="font-size:15px;font-weight:900;">🧾 Xuất hóa đơn VAT</div>'
-      + '<button class="btn-ghost" onclick="closeSalesModal()" style="padding:6px 10px;">✕</button></div>'
-      + '<div class="sk-modal-bd"><div class="sk-form-grid">'
-      + '<div class="sk-form-group"><label class="sk-lbl">Thuế suất VAT (%)</label>'
-      + '<select class="form-input" id="inv-thue"><option value="10">10%</option><option value="8">8%</option><option value="5">5%</option><option value="0">Miễn thuế</option></select></div>'
-      + '<div class="sk-form-group"><label class="sk-lbl">Số hóa đơn (tùy chọn)</label>'
-      + '<input class="form-input" id="inv-so" placeholder="Tự động nếu để trống"></div>'
-      + '<div class="sk-form-group sk-form-full"><label class="sk-lbl">Địa chỉ khách hàng (trên HD)</label>'
-      + '<input class="form-input" id="inv-addr"></div>'
-      + '<div class="sk-form-group"><label class="sk-lbl">MST khách hàng</label>'
-      + '<input class="form-input" id="inv-mst"></div>'
-      + '</div></div>'
-      + '<div class="sk-modal-ft"><button class="btn-ghost" onclick="closeSalesModal()">Hủy</button>'
-      + '<button class="btn-primary" onclick="_soDoInvoice(\''+_esc(orderId)+'\')" style="font-size:12px;">🧾 Xuất hóa đơn</button></div>';
-    window.showSalesModal(html);
-  }
-  window._soCreateInvoice = _soCreateInvoice;
-
-  function _soDoInvoice(orderId) {
+function _soDoInvoice(orderId) {
     var apiF = _api(); if (!apiF) return;
     apiF('sales_create_invoice', {
       don_id    : orderId,
@@ -762,6 +753,26 @@
       window.closeSalesModal();
     });
   }
-  window._soDoInvoice = _soDoInvoice;
 
-})();
+window.showSalesModal = _soModal;
+window.showSalesModal  = _soModal;
+window.closeSalesModal = _soCloseModal;
+window._soTab = _soTab;
+window._soSearch = _soSearch;
+window._soRefresh = _soRefresh;
+window._soShowSapoConfig = _soShowSapoConfig;
+window._soDetail = _soDetail;
+window._soNewOrder = _soNewOrder;
+window._soAddToCart = _soAddToCart;
+window._soCalcTotal = _soCalcTotal;
+window._soSubmitOrder = _soSubmitOrder;
+window._soConfirm = _soConfirm;
+window._soChangeStatus = _soChangeStatus;
+window._soRecordPayment = _soRecordPayment;
+window._soDoPayment = _soDoPayment;
+window._soDelivery = _soDelivery;
+window._soDoDelivery = _soDoDelivery;
+window._soCreateInvoice = _soCreateInvoice;
+window._soDoInvoice = _soDoInvoice;
+
+}());

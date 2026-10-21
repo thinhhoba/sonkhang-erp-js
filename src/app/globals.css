@@ -1,0 +1,16 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  background-color: #f0f2f5;
+}
+
+/* Antd table compact style */
+.ant-table-small .ant-table-thead > tr > th {
+  background-color: #fafafa;
+  font-weight: 600;
+}

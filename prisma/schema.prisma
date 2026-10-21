@@ -1,0 +1,631 @@
+// File: prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. NHÂN SỰ, BẢO MẬT & NHẬT KÝ
+model Employee {
+  id                String   @id @default(cuid())
+  code              String   @unique // Khớp với Danh mục Nhân viên MISA
+  fullName          String
+  email             String   @unique // Gmail dùng cho Google OAuth Whitelist
+  phone             String   @unique
+  avatarUrl         String?
+  
+  role              String   @default("DRIVER") // ADMIN | ACCOUNTANT | DISPATCHER | DRIVER
+  isActive          Boolean  @default(true)
+  
+  baseSalary        Float    @default(0)
+  ratePerTrip       Float    @default(30000)    // 30.000đ / chuyến
+  ratePerStop       Float    @default(5000)     // 5.000đ / điểm giao thành công
+  ratePerKg         Float    @default(250)      // 250đ / kg hàng thực giao
+  
+  trips             DeliveryTrip[]
+  attendances       Attendance[]
+  payrolls          MonthlyPayroll[]
+  auditLogs         AuditLog[]
+  internalNotes     InternalNote[]
+  assignedVehicles  Vehicle[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model AuditLog {
+  id                String   @id @default(cuid())
+  employeeId        String
+  employee          Employee @relation(fields: [employeeId], references: [id])
+  action            String   // SETTLE_CASH | SETTLE_RETURN_STOCK | CLOSE_TRIP | IMPORT_XML
+  targetId          String
+  oldValue          String?
+  newValue          String?
+  note              String?
+  createdAt         DateTime @default(now())
+}
+
+model InternalNote {
+  id                String   @id @default(cuid())
+  employeeId        String?
+  employee          Employee? @relation(fields: [employeeId], references: [id])
+  authorName        String
+  department        String   // ACCOUNTING | WAREHOUSE | DISPATCH | GENERAL
+  content           String
+  urgency           String   @default("NORMAL") // NORMAL | URGENT | HIGH
+  isResolved        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// 2. DANH MỤC HÀNG HÓA & TỒN KHO GIÁ VỐN
+model Product {
+  id                String   @id @default(cuid())
+  sapoVariantId     String?  @unique
+  sku               String   @unique
+  misaItemCode      String?  
+  name              String   
+  baseUnit          String   
+  weightKg          Float    @default(0) // Trọng lượng 1 đơn vị chuẩn (Kg)
+  
+  currentStock      Float    @default(0) // Tồn thực tế trong kho
+  inTransitStock    Float    @default(0) // Hàng đang nằm trên xe giao vận
+  avgCostPrice      Float    @default(0) // Giá vốn bình quân gia quyền
+
+  locationId        String?
+  location          WarehouseLocation? @relation(fields: [locationId], references: [id])
+
+  supplierMappings  SupplierProductMapping[]
+  inventoryLogs     InventoryLedger[]
+  orderItems        SalesOrderItem[]
+  purchaseItems     PurchaseInvoiceItem[]
+  poItems           PurchaseOrderItem[]
+  stocktakeItems    StocktakeItem[]
+  issueItems        WarehouseIssueItem[]
+  salesReturnItems  SalesReturnItem[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// 3. MODULE 1: MUA HÀNG (MEINVOICEBOT) & KHO
+model SupplierProductMapping {
+  id                  String   @id @default(cuid())
+  supplierTaxCode     String   
+  invoiceProductName  String   
+  invoiceUnit         String   
+  conversionRate      Float    @default(1) // Hệ số quy đổi sang baseUnit nội bộ
+  
+  productId           String
+  product             Product  @relation(fields: [productId], references: [id])
+
+  @@unique([supplierTaxCode, invoiceProductName, invoiceUnit])
+}
+
+model PurchaseInvoice {
+  id                  String   @id @default(cuid())
+  meInvoiceId         String   @unique
+  invoiceNumber       String   
+  invoiceSymbol       String   
+  invoiceDate         DateTime
+  supplierTaxCode     String
+  supplierName        String
+  misaVendorCode      String?  
+  
+  subTotalAmount      Float    
+  discountAmount      Float    @default(0)
+  extraFeeAmount      Float    @default(0)
+  vatAmount           Float    
+  grandTotal          Float    
+  xmlRawContent       String?  
+  
+  poId                String?
+  purchaseOrder       PurchaseOrder? @relation(fields: [poId], references: [id])
+
+  status              String   @default("PENDING_MAP") // PENDING_MAP | PENDING_STOCK_IMPORT | IMPORTED_STOCK | EXPORTED_MISA
+  items               PurchaseInvoiceItem[]
+  createdAt           DateTime @default(now())
+}
+
+model PurchaseInvoiceItem {
+  id                  String          @id @default(cuid())
+  purchaseInvoiceId   String
+  purchaseInvoice     PurchaseInvoice @relation(fields: [purchaseInvoiceId], references: [id], onDelete: Cascade)
+  
+  rawProductName      String   
+  rawUnit             String   
+  quantity            Float    
+  unitPrice           Float    
+  amount              Float    
+  
+  mappedProductId     String?
+  mappedProduct       Product? @relation(fields: [mappedProductId], references: [id])
+  convertedQty        Float?   
+  effectiveUnitCost   Float?   
+}
+
+model InventoryLedger {
+  id                  String   @id @default(cuid())
+  productId           String
+  product             Product  @relation(fields: [productId], references: [id])
+  type                String   // IN_PURCHASE | OUT_DISPATCH | IN_RETURN_TRIP | ADJUSTMENT
+  referenceCode       String   
+  qtyChange           Float    
+  unitCostAtTime      Float    
+  stockAfter          Float    
+  avgCostAfter        Float    
+  note                String?
+  createdAt           DateTime @default(now())
+}
+
+// 4. MODULE 2: ĐỒNG BỘ SAPO & ĐIỀU PHỐI GIAO VẬN
+model SalesOrder {
+  id                  String   @id @default(cuid())
+  sapoOrderId         String   @unique
+  orderCode           String   @unique
+  
+  sapoCustomerId      String?
+  misaCustomerCode    String?  
+  customerName        String
+  customerPhone       String?
+  shippingAddress     String
+  
+  totalWeightKg       Float    @default(0)
+  totalAmount         Float    
+  codAmountRequired   Float    
+  
+  deliveryStatus      String   @default("WAITING_DISPATCH") // WAITING_DISPATCH | IN_TRANSIT | DELIVERED | PARTIAL | CANCELLED
+  misaSyncStatus      String   @default("UNSYNCED")
+  customerId          String?
+  customer            Customer?        @relation(fields: [customerId], references: [id])
+  district            String?          // Quận / Huyện phục vụ gợi ý gom tuyến
+  ward                String?          // Phường / Xã
+  
+  requiresCreditApproval Boolean       @default(false)
+  creditApprovalStatus   String        @default("APPROVED") // PENDING_APPROVAL | APPROVED | REJECTED
+  creditApprovalNote     String?
+  creditApprovedById     String?
+  
+  items               SalesOrderItem[]
+  tripStops           DeliveryTripStop[]
+  salesReturns        SalesReturn[]
+  orderDate           DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model SalesOrderItem {
+  id                  String     @id @default(cuid())
+  salesOrderId        String
+  salesOrder          SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product    @relation(fields: [productId], references: [id])
+  
+  orderedQty          Float      
+  deliveredQty        Float      @default(0)
+  returnedQty         Float      @default(0)
+  unitPrice           Float
+  discountAmount      Float      @default(0)
+  lineAmount          Float      
+  lineWeightKg        Float      
+}
+
+model DeliveryTrip {
+  id                    String   @id @default(cuid())
+  tripCode              String   @unique
+  driverId              String
+  driver                Employee @relation(fields: [driverId], references: [id])
+  vehiclePlate          String?  
+  
+  plannedDurationMin    Int?      
+  departedAt            DateTime? 
+  returnedAt            DateTime? 
+  
+  hasReturnGoods        Boolean   @default(false)
+  returnStockSettledAt  DateTime? 
+  returnSettledById     String?
+  
+  cashSettledAt         DateTime? 
+  cashSettledById       String?
+  
+  totalSuccessStops     Int       @default(0)
+  totalDeliveredKg      Float     @default(0)
+  totalCashCollected    Float     @default(0)
+  totalTransferCollected Float    @default(0)
+  totalDebtSigned       Float     @default(0)
+  
+  tripSalaryEarned      Float     @default(0)
+  
+  status                String    @default("DRAFT") // DRAFT | ON_ROAD | WAITING_SETTLE | CLOSED
+  stops                 DeliveryTripStop[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model DeliveryTripStop {
+  id                  String       @id @default(cuid())
+  tripId              String
+  trip                DeliveryTrip @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  salesOrderId        String
+  salesOrder          SalesOrder   @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  stopSequence        Int          
+  
+  arrivedAt           DateTime?    
+  completedAt         DateTime?    
+  
+  status              String       @default("PENDING") // PENDING | SUCCESS | PARTIAL | FAILED
+  failOrPartialReason String?      
+  
+  actualDeliveredKg   Float        @default(0)
+  cashCollected       Float        @default(0)
+  transferCollected   Float        @default(0)
+  debtSigned          Float        @default(0)
+  proofImageUrl       String?      
+}
+
+// 5. MODULE 3: CHẤM CÔNG & CHỐT BẢNG LƯƠNG THÁNG
+model Attendance {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  date                DateTime 
+  checkIn             DateTime?
+  checkOut            DateTime?
+  workDayValue        Float    @default(1.0)
+  penaltyAmount       Float    @default(0)   
+  note                String?
+
+  @@unique([employeeId, date])
+}
+
+model MonthlyPayroll {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id])
+  monthYear           String   // Định dạng "YYYY-MM"
+  
+  totalWorkDays       Float    @default(0)
+  baseSalaryEarned    Float    @default(0)
+  
+  totalTripsCount     Int      @default(0)
+  totalStopsCount     Int      @default(0)
+  totalDeliveredKg    Float    @default(0)
+  totalTripSalary     Float    @default(0)
+  
+  allowanceAmount     Float    @default(0)
+  bonusAmount         Float    @default(0)
+  advanceDeducted     Float    @default(0)
+  penaltyDeducted     Float    @default(0)
+  
+  netSalary           Float    @default(0)
+  status              String   @default("DRAFT") // DRAFT | CONFIRMED | PAID
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([employeeId, monthYear])
+}
+
+// ==========================================
+// 6. PHÂN HỆ MUA HÀNG & NHÀ CUNG CẤP (PROCUREMENT)
+// ==========================================
+model Supplier {
+  id                String          @id @default(cuid())
+  code              String          @unique // VD: NCC-INDOMIE, NCC-MINHTHUY
+  name              String
+  taxCode           String          @unique // MST
+  contactPerson     String?         // Người liên hệ
+  phone             String?         
+  email             String?         
+  address           String?         
+  paymentTerms      String          @default("NET30") // NET30 | IMMEDIATE | NET15 | NET45 | NET60
+  creditLimit       Float           @default(0) // Hạn mức công nợ (VNĐ)
+  currentDebt       Float           @default(0) // Công nợ hiện tại (VNĐ)
+  bankAccount       String?         
+  bankName          String?         
+  isActive          Boolean         @default(true)
+  purchaseOrders    PurchaseOrder[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model PurchaseOrder {
+  id                    String              @id @default(cuid())
+  poCode                String              @unique // VD: PO-202610-001
+  supplierId            String
+  supplier              Supplier            @relation(fields: [supplierId], references: [id])
+  createdById           String?
+  approvedById          String?
+  expectedDeliveryDate  DateTime?
+  paymentTerms          String              @default("NET30")
+  status                String              @default("DRAFT") // DRAFT | APPROVED | PARTIAL | COMPLETED | CANCELLED
+  totalAmount           Float               @default(0) // Tổng tiền hàng trước thuế
+  vatAmount             Float               @default(0)
+  grandTotal            Float               @default(0) // Tổng tiền bao gồm VAT
+  note                  String?
+  items                 PurchaseOrderItem[]
+  invoices              PurchaseInvoice[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+}
+
+model PurchaseOrderItem {
+  id                  String        @id @default(cuid())
+  purchaseOrderId     String
+  purchaseOrder       PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product       @relation(fields: [productId], references: [id])
+  orderedQty          Float         // Số lượng đặt
+  receivedQty         Float         @default(0) // Số lượng thực tế đã nhập kho
+  unitPrice           Float         // Đơn giá thỏa thuận
+  lineAmount          Float         // Thành tiền
+  note                String?
+}
+
+// ==========================================
+// 7. PHÂN HỆ QUẢN LÝ KHO HÀNG CHUYÊN SÂU (ADVANCED WMS)
+// ==========================================
+model WarehouseLocation {
+  id                String    @id @default(cuid())
+  code              String    @unique // VD: KHO-LANH-A-01, KE-01-T02-O03
+  name              String    // Tên mô tả (VD: Kệ Lạnh A - Hộc 01)
+  zone              String    // KHO_LANH | KHO_MAT | KHO_KHO | KHU_GIAO_NHAN
+  aisle             String?   // Dãy / Kệ
+  rack              String?   // Tầng
+  bin               String?   // Hộc / Ô
+  description       String?
+  isActive          Boolean   @default(true)
+  products          Product[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model InventoryStocktake {
+  id                    String          @id @default(cuid())
+  stocktakeCode         String          @unique // VD: KK-202610-01
+  title                 String          // VD: Kiểm kê định kỳ kho lạnh Tháng 10
+  conductedById         String?         // Người thực hiện
+  status                String          @default("DRAFT") // DRAFT | IN_PROGRESS | COMPLETED | CANCELLED
+  totalDifferenceQty    Float           @default(0) // Tổng chênh lệch số lượng
+  totalDifferenceValue  Float           @default(0) // Tổng giá trị chênh lệch (VNĐ)
+  note                  String?
+  completedAt           DateTime?
+  items                 StocktakeItem[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+model StocktakeItem {
+  id                String             @id @default(cuid())
+  stocktakeId       String
+  stocktake         InventoryStocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product            @relation(fields: [productId], references: [id])
+  systemQty         Float              // Số lượng tồn trên hệ thống
+  actualQty         Float              // Số lượng thực tế kiểm đếm
+  differenceQty     Float              // actualQty - systemQty
+  unitCost          Float              // Giá vốn tại thời điểm kiểm kê
+  differenceValue   Float              // differenceQty * unitCost
+  reason            String?            // Lý do chênh lệch
+}
+
+model WarehouseIssue {
+  id              String               @id @default(cuid())
+  issueCode       String               @unique // VD: XK-202610-01
+  type            String               // DAMAGED | INTERNAL_USE | DONATION | OTHER
+  source          String               @default("WAREHOUSE") // WAREHOUSE | TRIP_RETURN
+  referenceCode   String?              // VD: Mã chuyến xe TRIP-2026...
+  createdById     String?
+  totalAmount     Float                @default(0) // Tổng giá trị xuất hủy
+  status          String               @default("CONFIRMED") // DRAFT | CONFIRMED | CANCELLED
+  note            String?
+  items           WarehouseIssueItem[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+}
+
+model WarehouseIssueItem {
+  id              String         @id @default(cuid())
+  issueId         String
+  issue           WarehouseIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product        @relation(fields: [productId], references: [id])
+  quantity        Float          // Số lượng xuất
+  unitCost        Float          // Giá vốn bình quân tại thời điểm xuất
+  lineAmount      Float          // quantity * unitCost
+  reason          String?        // Hỏng vỡ, rách bao bì, quá hạn...
+}
+
+// ==========================================
+// 8. PHÂN HỆ QUẢN LÝ CÔNG NỢ & KHÁCH HÀNG (SALES AR & RETURNS)
+// ==========================================
+model Customer {
+  id                  String        @id @default(cuid())
+  customerCode        String        @unique // VD: KH-SAPO-001 hoặc MISA
+  sapoCustomerId      String?       @unique
+  misaCustomerCode    String?
+  name                String
+  phone               String?
+  email               String?
+  address             String?
+  district            String?       // Quận / Huyện (Cầu Giấy, Tân Bình, Đống Đa...)
+  ward                String?       // Phường / Xã
+  city                String?       @default("TP. Hồ Chí Minh")
+  
+  creditLimit         Float         @default(20000000) // Hạn mức công nợ (VNĐ)
+  currentDebt         Float         @default(0) // Công nợ hiện tại (VNĐ)
+  paymentTerms        String        @default("NET30") // COD | NET15 | NET30 | NET45
+  maxOverdueDays      Int           @default(30) // Số ngày quá hạn tối đa
+  isBlocked           Boolean       @default(false) // Khóa không cho lên đơn nếu nợ xấu
+  
+  salesOrders         SalesOrder[]
+  salesReturns        SalesReturn[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+}
+
+model SalesReturn {
+  id                  String            @id @default(cuid())
+  returnCode          String            @unique // VD: TH-202610-001
+  salesOrderId        String?
+  salesOrder          SalesOrder?       @relation(fields: [salesOrderId], references: [id])
+  customerId          String?
+  customer            Customer?         @relation(fields: [customerId], references: [id])
+  tripCode            String?           // Mã chuyến xe Tera V6 trả về
+  returnDate          DateTime          @default(now())
+  reason              String            // Lý do trả hàng (Hỏng vỡ, Khách đổi ý, Sai mặt hàng, Quá hạn giao)
+  totalReturnAmount   Float             @default(0) // Tổng tiền hàng trả lại
+  arDeductionAmount   Float             @default(0) // Số tiền giảm trừ công nợ phải thu
+  status              String            @default("COMPLETED") // PENDING | COMPLETED | CANCELLED
+  receivedById        String?           // Người nhận hàng hoàn tại kho
+  note                String?
+  items               SalesReturnItem[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+model SalesReturnItem {
+  id                  String       @id @default(cuid())
+  salesReturnId       String
+  salesReturn         SalesReturn  @relation(fields: [salesReturnId], references: [id], onDelete: Cascade)
+  productId           String
+  product             Product      @relation(fields: [productId], references: [id])
+  quantity            Float        // Số lượng trả về
+  unitPrice           Float        // Đơn giá bán của mặt hàng
+  lineAmount          Float        // quantity * unitPrice
+  condition           String       @default("GOOD") // GOOD (Nhập kho bán tiếp) | DAMAGED (Hỏng vỡ - xuất hủy)
+  actionTaken         String       @default("RESTOCKED") // RESTOCKED | SCRAPPED
+  reason              String?
+}
+
+// ==========================================
+// 9. QUẢN LÝ PHƯƠNG TIỆN & BẢO DƯỠNG (FLEET MANAGEMENT)
+// ==========================================
+model Vehicle {
+  id                      String               @id @default(cuid())
+  plateNumber             String               @unique // Biển số xe: 51D-998.24
+  modelName               String               @default("Tera V6") // Dòng xe: Tera V6 945kg, Xe tải 1.5T...
+  manufacturer            String?              @default("Daehan Motors")
+  yearOfManufacture       Int?                 @default(2024)
+  payloadCapacityKg       Float                @default(945) // Tải trọng cho phép chở (Kg)
+  fuelType                String               @default("DIESEL") // DIESEL | GASOLINE | ELECTRIC
+  currentOdometerKm       Float                @default(0) // Số ODO hiện tại
+  status                  String               @default("ACTIVE") // ACTIVE | MAINTENANCE | INACTIVE
+  assignedDriverId        String?              // Tài xế phụ trách chính
+  assignedDriver          Employee?            @relation(fields: [assignedDriverId], references: [id])
+  insuranceExpiryDate     DateTime?            // Hạn bảo hiểm bắt buộc
+  registrationExpiryDate  DateTime?            // Hạn đăng kiểm xe
+  maintenances            VehicleMaintenance[]
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+model VehicleMaintenance {
+  id                      String               @id @default(cuid())
+  maintenanceCode         String               @unique // BD-202610-001
+  vehicleId               String
+  vehicle                 Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  maintenanceDate         DateTime             @default(now())
+  odometerKm              Float                // Km bảo dưỡng
+  serviceType             String               // THAY_NHOT | BAO_DUONG_PHANH | THAY_LOP | DANG_KIEM | REPAIR_OTHER
+  title                   String               // Thay dầu động cơ & lọc nhớt định kỳ 5.000km
+  description             String?
+  garageName              String?              // Gara thực hiện
+  cost                    Float                @default(0) // Chi phí bảo dưỡng
+  status                  String               @default("COMPLETED") // SCHEDULED | IN_PROGRESS | COMPLETED
+  performedById           String?              // Người phụ trách
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+// ==========================================
+// 10. KHO LƯU TRỮ CHỨNG TỪ SỐ HÓA (DIGITAL DOCUMENTS)
+// ==========================================
+model DocumentRecord {
+  id                      String               @id @default(cuid())
+  docCode                 String               @unique // CT-202610-001
+  title                   String               // Tiêu đề chứng từ
+  category                String               // INVOICE_VAT | DELIVERY_POD | VEHICLE_REG | SUPPLIER_CONTRACT | FINANCIAL_REPORT | OTHER
+  fileUrl                 String               // Đường dẫn lưu trữ / URL
+  fileType                String?              // PDF, PNG, JPG, XLSX
+  fileSizeKb              Float?
+  referenceId             String?              // Mã liên quan: poCode, tripCode, orderCode...
+  uploadedById            String?
+  uploaderName            String?
+  tags                    String?              // Phân loại nhãn cách nhau bằng dấu phẩy
+  notes                   String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+// ==========================================
+// 11. QUẢN LÝ THU - CHI NỘI BỘ & QUỸ TIỀN MẶT (INTERNAL TRANSACTIONS)
+// ==========================================
+model InternalTransaction {
+  id                      String               @id @default(cuid())
+  voucherCode             String               @unique // PT-202610-001 (Thu) hoặc PC-202610-001 (Chi)
+  type                    String               // RECEIPT (Thu) | PAYMENT (Chi)
+  category                String               // FUEL_EXPENSE | VEHICLE_REPAIR | MEAL_ALLOWANCE | OFFICE_SUPPLIES | ADVANCE_SALARY | COD_SUBMISSION | OTHER
+  amount                  Float                // Số tiền
+  paymentMethod           String               @default("CASH") // CASH | BANK_TRANSFER
+  recipientOrPayer        String               // Người nộp / Người nhận tiền
+  submittedById           String?              // Người lập phiếu
+  submittedByName         String
+  approvedById            String?              // Người duyệt (Kế toán trưởng / Giám đốc)
+  approvedByName          String?
+  status                  String               @default("PENDING") // PENDING | APPROVED | REJECTED
+  note                    String?
+  attachmentUrl           String?              // Hóa đơn/chứng từ đính kèm
+  transactionDate         DateTime             @default(now())
+  approvedAt              DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+// ==========================================
+// 12. BẢNG TIN & MẠNG XÃ HỘI DOANH NGHIỆP (COMPANY FEED & REACTIONS)
+// ==========================================
+model CompanyPost {
+  id                      String               @id @default(cuid())
+  authorId                String?
+  authorName              String
+  authorAvatar            String?
+  authorRole              String?
+  department              String               @default("GENERAL") // MANAGEMENT | LOGISTICS | ACCOUNTING | WAREHOUSE | GENERAL
+  title                   String?
+  content                 String
+  postType                String               @default("ANNOUNCEMENT") // ANNOUNCEMENT | RECOGNITION | DISCUSSION | EVENT
+  pinned                  Boolean              @default(false)
+  likesCount              Int                  @default(0)
+  reactions               PostReaction[]
+  comments                PostComment[]
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+model PostReaction {
+  id                      String               @id @default(cuid())
+  postId                  String
+  post                    CompanyPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId                  String               // Mã nhân viên hoặc IP/session
+  userName                String
+  reactionType            String               @default("HEART") // HEART | THUMBS_UP | CLAP | STAR
+  createdAt               DateTime             @default(now())
+
+  @@unique([postId, userId])
+}
+
+model PostComment {
+  id                      String               @id @default(cuid())
+  postId                  String
+  post                    CompanyPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId                  String?
+  userName                String
+  userAvatar              String?
+  content                 String
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+}
+
+

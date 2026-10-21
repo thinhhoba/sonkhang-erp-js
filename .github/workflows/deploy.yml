@@ -1,0 +1,73 @@
+name: Deploy Sonkhang ERP to VPS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Automated Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run Vitest Unit Tests
+        run: npm run test
+
+  deploy:
+    name: Deploy to VPS via SSH
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote SSH Commands
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          passphrase: ${{ secrets.VPS_SSH_PASSPHRASE }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script_stop: true
+          script: |
+            echo "🚀 [Deploy] Bắt đầu triển khai Sơn Khang ERP..."
+            
+            # 1. Đi vào thư mục dự án trên VPS
+            TARGET_DIR="/opt/sonkhang-erp"
+            if [ ! -d "$TARGET_DIR" ]; then
+              echo "Thư mục $TARGET_DIR chưa tồn tại. Đang clone mới từ GitHub..."
+              git clone https://github.com/${{ github.repository }}.git $TARGET_DIR
+            fi
+            
+            cd $TARGET_DIR
+
+            # 2. Pull code mới nhất từ branch hiện tại
+            echo "📥 [Deploy] Đang pull code mới nhất..."
+            git fetch --all
+            git reset --hard origin/${{ github.ref_name }}
+
+            # 3. Build và khởi động lại Docker containers
+            echo "🐳 [Deploy] Đang build và restart container..."
+            docker compose down --remove-orphans || true
+            docker compose up -d --build
+
+            # 4. Kiểm tra trạng thái các service
+            echo "🔍 [Deploy] Kiểm tra container..."
+            docker compose ps
+
+            echo "✅ [Deploy] Triển khai thành công trên VPS!"

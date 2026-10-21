@@ -1,0 +1,25 @@
+{
+  "name": "Sơn Khang ERP Enterprise Super-App",
+  "short_name": "Sơn Khang ERP",
+  "description": "Hệ Thống Điều Phối & Quản Trị Doanh Nghiệp Toàn Diện - Sơn Khang Food",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#001529",
+  "theme_color": "#1890ff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

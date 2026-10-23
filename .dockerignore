@@ -1,0 +1,16 @@
+# Keep the Docker build context deterministic and prevent host-specific Next
+# output (notably Windows standalone traces) from leaking into the Linux build.
+.git
+.github
+.next
+.vscode
+node_modules
+coverage
+*.log
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.production.example
+backups
+certbot

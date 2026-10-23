@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/route-guard";
+import { warehouseFailure } from "@/lib/warehouse-errors";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
+    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN", "WAREHOUSE"]);
     if (forbidden) return forbidden;
     const { searchParams } = new URL(req.url);
     const productId = searchParams.get("productId");
@@ -30,9 +31,9 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
       take: 100,
     });
-
-    return NextResponse.json({ success: true, data: ledgers });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const data = auth.user.role === "WAREHOUSE" ? ledgers.map(({ unitCostAtTime, avgCostAfter, ...entry }) => entry) : ledgers;
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    return warehouseFailure(error, 500);
   }
 }

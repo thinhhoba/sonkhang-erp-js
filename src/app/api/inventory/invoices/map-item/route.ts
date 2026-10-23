@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { MeInvoiceService } from "@/services/meinvoice.service";
 import { requireSession, requireRole } from "@/lib/route-guard";
+import { ProcurementDomainError, procurementErrorResponse } from "@/lib/procurement";
 
 export async function POST(req: Request) {
   try {
@@ -17,15 +18,20 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    const parsedConversionRate = Number(conversionRate);
+    if (!Number.isFinite(parsedConversionRate) || parsedConversionRate <= 0) {
+      throw new ProcurementDomainError("Hệ số quy đổi không hợp lệ");
+    }
 
     const updatedItem = await MeInvoiceService.mapItemProduct(
       invoiceItemId,
       productId,
-      Number(conversionRate) || 1
+      parsedConversionRate
     );
 
     return NextResponse.json({ success: true, data: updatedItem });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    const failure = procurementErrorResponse(error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

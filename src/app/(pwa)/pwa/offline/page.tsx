@@ -1,0 +1,1 @@
+export default function OfflinePage() { return <main className="pwa-offline"><div><h1>Bạn đang ngoại tuyến</h1><p>Các thao tác duyệt, đối soát, khóa chuyến và ghi sổ chỉ thực hiện khi có mạng. Hãy kết nối lại rồi tải lại trang.</p></div></main>; }

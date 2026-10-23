@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireSession, requireRole } from "@/lib/route-guard";
+import { procurementErrorResponse } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,8 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: invoice });
   } catch (error: any) {
-    console.error("[API Invoices GET by ID] Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const failure = procurementErrorResponse(error);
+    console.error("[API Invoices GET by ID]", failure.error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

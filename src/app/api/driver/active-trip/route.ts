@@ -1,71 +1,50 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { activeTripAccess } from "@/lib/permissions";
 import { requireSession } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
+const ACTIVE_STATUSES = ["DRAFT", "ON_ROAD", "WAITING_SETTLE"];
+
+/**
+ * Operational view for the driver PWA. Drivers receive only their own active
+ * trip; dispatch/admin may inspect an active trip but never receive COD or
+ * order-value fields from this endpoint.
+ */
 export async function GET() {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
+    const { role, id: employeeId } = auth.user;
+    const access = activeTripAccess(role);
 
-    const isDriver = auth.user.role === "DRIVER";
-    // Tài xế chỉ thấy chuyến của chính mình; điều phối/admin thấy chuyến đang chạy
-    const activeWhere: any = {
-      status: { in: ["DRAFT", "ON_ROAD", "WAITING_SETTLE"] },
-    };
-    if (isDriver) activeWhere.driverId = auth.user.id;
+    if (!access.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Không có quyền xem chuyến xe đang hoạt động!" },
+        { status: 403 }
+      );
+    }
 
-    // Tìm chuyến xe chưa CLOSED gần nhất hoặc đang thực hiện
-    const trip = await prisma.deliveryTrip.findFirst({
-      where: activeWhere,
-      include: {
-        driver: {
-          select: {
-            id: true,
-            fullName: true,
-            phone: true,
-          },
-        },
-        stops: {
-          orderBy: { stopSequence: "asc" },
-          include: {
-            salesOrder: {
-              select: {
-                id: true,
-                orderCode: true,
-                customerName: true,
-                customerPhone: true,
-                shippingAddress: true,
-                totalWeightKg: true,
-                codAmountRequired: true,
-                totalAmount: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    // Nếu không có chuyến đang chạy, lấy chuyến xe gần nhất kể cả CLOSED để tài xế xem lại
-    if (!trip) {
-      const latestWhere: any = {};
-      if (isDriver) latestWhere.driverId = auth.user.id;
-
-      const latestTrip = await prisma.deliveryTrip.findFirst({
-        where: latestWhere,
-        include: {
-          driver: {
-            select: {
-              id: true,
-              fullName: true,
-              phone: true,
-            },
-          },
+    if (role === "DRIVER") {
+      const trip = await prisma.deliveryTrip.findFirst({
+        where: { driverId: employeeId, status: { in: ACTIVE_STATUSES } },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          tripCode: true,
+          status: true,
+          vehiclePlate: true,
+          departedAt: true,
+          returnedAt: true,
           stops: {
             orderBy: { stopSequence: "asc" },
-            include: {
+            select: {
+              id: true,
+              stopSequence: true,
+              status: true,
+              arrivedAt: true,
+              completedAt: true,
               salesOrder: {
                 select: {
                   id: true,
@@ -75,21 +54,51 @@ export async function GET() {
                   shippingAddress: true,
                   totalWeightKg: true,
                   codAmountRequired: true,
-                  totalAmount: true,
                 },
               },
             },
           },
         },
-        orderBy: { createdAt: "desc" },
       });
-
-      return NextResponse.json({ success: true, data: latestTrip || null });
+      return NextResponse.json({ success: true, data: trip });
     }
 
+    const trip = await prisma.deliveryTrip.findFirst({
+      where: { status: { in: ACTIVE_STATUSES } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        tripCode: true,
+        status: true,
+        vehiclePlate: true,
+        departedAt: true,
+        returnedAt: true,
+        driver: { select: { id: true, fullName: true, code: true } },
+        stops: {
+          orderBy: { stopSequence: "asc" },
+          select: {
+            id: true,
+            stopSequence: true,
+            status: true,
+            arrivedAt: true,
+            completedAt: true,
+            salesOrder: {
+              select: {
+                id: true,
+                orderCode: true,
+                customerName: true,
+                customerPhone: true,
+                shippingAddress: true,
+                totalWeightKg: true,
+              },
+            },
+          },
+        },
+      },
+    });
     return NextResponse.json({ success: true, data: trip });
-  } catch (error: any) {
-    console.error("[API Active Trip GET] Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Không thể tải chuyến xe";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

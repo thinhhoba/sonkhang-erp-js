@@ -1,5 +1,14 @@
 // File: src/services/inventory.service.ts
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+import { ProcurementDomainError } from "@/lib/procurement";
+
+export class InventoryDomainError extends Error {
+  constructor(message: string, readonly status = 400) {
+    super(message);
+    this.name = "InventoryDomainError";
+  }
+}
 
 export interface RecordStockTransactionInput {
   productId: string;
@@ -11,6 +20,8 @@ export interface RecordStockTransactionInput {
   // Biến động hàng đang đi đường (dùng khi xuất kho lên xe / nhận hàng hoàn).
   // Mặc định 0 = không đụng tới inTransitStock.
   inTransitChange?: number;
+  /** Actor is required by warehouse write flows so the immutable movement is auditable. */
+  actorId?: string;
 }
 
 // Kiểu client transaction tối thiểu mà recordTransaction cần dùng,
@@ -24,20 +35,36 @@ export class InventoryService {
    * Không thay đổi avgCostPrice (trừ luồng IN_PURCHASE riêng bên dưới).
    */
   static async recordTransactionInTx(tx: TxClient, input: RecordStockTransactionInput) {
-    const { productId, type, referenceCode, qtyChange, unitCostAtTime, note } = input;
+    const { productId, type, referenceCode, qtyChange, unitCostAtTime, note, actorId } = input;
     const inTransitChange = input.inTransitChange ?? 0;
+
+    if (!productId || !referenceCode || !Number.isFinite(qtyChange) || !Number.isFinite(inTransitChange)) {
+      throw new InventoryDomainError("Dữ liệu biến động kho không hợp lệ");
+    }
+    if (unitCostAtTime !== undefined && (!Number.isFinite(unitCostAtTime) || unitCostAtTime < 0)) {
+      throw new InventoryDomainError("Giá vốn tại thời điểm biến động không hợp lệ");
+    }
+    if (inTransitChange !== 0 && !actorId) {
+      throw new InventoryDomainError("Biến động tồn trên xe phải có tác nhân đối soát", 400);
+    }
 
     const product = await tx.product.findUnique({
       where: { id: productId },
     });
 
     if (!product) {
-      throw new Error(`Không tìm thấy sản phẩm có ID: ${productId}`);
+      throw new InventoryDomainError("Không tìm thấy sản phẩm", 404);
     }
 
     const newStock = product.currentStock + qtyChange;
     const newInTransitStock = product.inTransitStock + inTransitChange;
     const effectiveUnitCost = unitCostAtTime ?? product.avgCostPrice;
+
+    // Cached balances are never allowed to go below zero. PostgreSQL serializable
+    // transactions at mutation entry points make this read/compute/write atomic.
+    if (newStock < 0 || newInTransitStock < 0) {
+      throw new InventoryDomainError("Không thể ghi nhận biến động làm âm tồn kho hoặc tồn trên xe", 409);
+    }
 
     // 1. Tạo bản ghi Thẻ kho (Ledger) với snapshot số dư THỰC TẾ
     const ledgerEntry = await tx.inventoryLedger.create({
@@ -49,7 +76,10 @@ export class InventoryService {
         unitCostAtTime: effectiveUnitCost,
         stockAfter: newStock,
         avgCostAfter: product.avgCostPrice, // Xuất/hoàn kho không đổi giá vốn bình quân
-        note,
+        // InventoryLedger cannot model in-transit balance without a location
+        // dimension. The explicit note and AuditLog keep this limitation visible
+        // to reconciliation instead of pretending qtyChange is truck stock.
+        note: inTransitChange === 0 ? note : `${note || "Biến động tồn trên xe"} [Tồn trên xe: ${product.inTransitStock} → ${newInTransitStock}]`,
       },
     });
 
@@ -62,6 +92,19 @@ export class InventoryService {
       },
     });
 
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          employeeId: actorId,
+          action: "INVENTORY_LEDGER_POSTED",
+          targetId: ledgerEntry.id,
+          oldValue: JSON.stringify({ currentStock: product.currentStock, inTransitStock: product.inTransitStock }),
+          newValue: JSON.stringify({ currentStock: newStock, inTransitStock: newInTransitStock }),
+          note: `${type} ${referenceCode}${inTransitChange === 0 ? "" : " — cần đối chiếu tồn trên xe với chuyến giao"}`,
+        },
+      });
+    }
+
     return ledgerEntry;
   }
 
@@ -72,7 +115,7 @@ export class InventoryService {
   static async recordTransaction(input: RecordStockTransactionInput) {
     return await prisma.$transaction(async (tx) => {
       return await InventoryService.recordTransactionInTx(tx, input);
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**
@@ -80,7 +123,7 @@ export class InventoryService {
    * Công thức:
    * Giá vốn mới = ((Tồn hiện tại * Giá vốn cũ) + Giá trị nhập thực tế) / (Tồn hiện tại + Số lượng nhập)
    */
-  static async importPurchaseInvoiceToStock(purchaseInvoiceId: string) {
+  static async importPurchaseInvoiceToStock(purchaseInvoiceId: string, actorId?: string) {
     return await prisma.$transaction(async (tx) => {
       const invoice = await tx.purchaseInvoice.findUnique({
         where: { id: purchaseInvoiceId },
@@ -88,11 +131,11 @@ export class InventoryService {
       });
 
       if (!invoice) {
-        throw new Error(`Không tìm thấy hóa đơn mua hàng ID: ${purchaseInvoiceId}`);
+        throw new ProcurementDomainError(`Không tìm thấy hóa đơn mua hàng ID: ${purchaseInvoiceId}`, 404);
       }
 
       if (invoice.status === "IMPORTED_STOCK") {
-        throw new Error("Hóa đơn này đã được nhập kho trước đó!");
+        throw new ProcurementDomainError("Hóa đơn này đã được nhập kho trước đó!", 409);
       }
 
       // Hệ số phân bổ Chiết khấu và Chi phí thêm trên từng dòng hàng
@@ -102,7 +145,7 @@ export class InventoryService {
 
       for (const item of invoice.items) {
         if (!item.mappedProductId || !item.convertedQty || item.convertedQty <= 0) {
-          throw new Error(
+          throw new ProcurementDomainError(
             `Dòng hàng "${item.rawProductName}" chưa được gán mã nội bộ hoặc số lượng quy đổi không hợp lệ.`
           );
         }
@@ -112,7 +155,7 @@ export class InventoryService {
         });
 
         if (!product) {
-          throw new Error(`Sản phẩm nội bộ ID ${item.mappedProductId} không tồn tại.`);
+          throw new ProcurementDomainError(`Sản phẩm nội bộ ID ${item.mappedProductId} không tồn tại.`, 404);
         }
 
         // Tính giá trị nhập thực tế của dòng sau khi trừ chiết khấu và cộng phí mua hàng
@@ -159,11 +202,22 @@ export class InventoryService {
       }
 
       // Đánh dấu hóa đơn đã nhập kho thành công
-      return await tx.purchaseInvoice.update({
+      const updatedInvoice = await tx.purchaseInvoice.update({
         where: { id: invoice.id },
         data: { status: "IMPORTED_STOCK" },
       });
-    });
+      if (actorId) {
+        await tx.auditLog.create({
+          data: {
+            employeeId: actorId,
+            action: "IMPORT_PURCHASE_INVOICE_TO_STOCK",
+            targetId: invoice.id,
+            newValue: JSON.stringify({ invoiceNumber: invoice.invoiceNumber, itemCount: invoice.items.length }),
+          },
+        });
+      }
+      return updatedInvoice;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
 }

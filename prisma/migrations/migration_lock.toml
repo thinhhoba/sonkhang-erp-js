@@ -1,0 +1,2 @@
+# Generated baseline for the existing PostgreSQL schema.
+provider = "postgresql"

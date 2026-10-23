@@ -1,0 +1,2 @@
+import PwaShell,{PwaActionGrid} from "@/components/pwa/PwaShell";
+export default function Page(){return <PwaShell title="Giao hàng" subtitle="Chuyến được giao và trạng thái đồng bộ"><PwaActionGrid actions={[{href:"/driver-app",label:"Chuyến hiện tại",description:"Mở hành trình đang được giao"},{href:"/driver-app",label:"Điểm giao",description:"Gọi khách, POD và thu tiền"},{href:"/driver-app",label:"Về kho",description:"Kết thúc hành trình"}]}/></PwaShell>}

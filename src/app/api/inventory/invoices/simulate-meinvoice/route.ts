@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { MeInvoiceService, MisaInbotInvoicePayload } from "@/services/meinvoice.service";
+import { requireSession, requireRole } from "@/lib/route-guard";
+import { procurementErrorResponse } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +59,12 @@ const SUPPLIERS_POOL = [
 ];
 
 export async function POST() {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Endpoint mô phỏng bị vô hiệu hóa trên Production!" }, { status: 403 });
+  const auth = await requireSession();
+  if ("error" in auth) return auth.error;
+  const forbidden = requireRole(auth.user, ["ADMIN", "ACCOUNTANT"]);
+  if (forbidden) return forbidden;
+  if (process.env.NODE_ENV === "production" || process.env.ENABLE_DEMO_INVOICE_SIMULATION !== "true") {
+    return NextResponse.json({ success: false, error: "Endpoint mô phỏng chưa được bật cho môi trường này" }, { status: 403 });
   }
   try {
     const supplier = SUPPLIERS_POOL[Math.floor(Math.random() * SUPPLIERS_POOL.length)];
@@ -113,7 +119,8 @@ export async function POST() {
       data: invoice,
     });
   } catch (error: any) {
-    console.error("[Simulate meInvoice Error]:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const failure = procurementErrorResponse(error);
+    console.error("[Simulate meInvoice]", failure.error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

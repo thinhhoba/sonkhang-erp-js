@@ -1,8 +1,11 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { InventoryService } from "./inventory.service";
 import { PayrollService } from "./payroll.service";
+import { ForbiddenError } from "@/lib/http-errors";
 
 export interface CreateTripInput {
+  actorId: string;
   driverId: string;
   vehiclePlate?: string;
   plannedDurationMin?: number;
@@ -23,14 +26,193 @@ export interface CompleteStopInput {
   }>;
 }
 
+export interface TripActor {
+  id: string;
+  role?: string;
+}
+
+const TRIP_OPERATORS = new Set(["ADMIN", "DISPATCHER"]);
+const TERMINAL_STOP_STATUSES = new Set(["SUCCESS", "PARTIAL", "FAILED"]);
+const STOP_STATUSES = new Set(["SUCCESS", "PARTIAL", "FAILED"]);
+
+function assertTripActor(trip: { driverId: string }, actor: TripActor) {
+  if (actor.id === trip.driverId || (actor.role && TRIP_OPERATORS.has(actor.role))) {
+    return;
+  }
+  throw new ForbiddenError("Không có quyền thao tác chuyến xe này!");
+}
+
+/** Runtime validation because route JSON is untyped at the trust boundary. */
+export function validateCompleteStopInput(input: CompleteStopInput) {
+  if (!STOP_STATUSES.has(input.status)) {
+    throw new Error("Trạng thái hoàn thành điểm giao không hợp lệ!");
+  }
+
+  for (const [field, value] of Object.entries({
+    actualDeliveredKg: input.actualDeliveredKg,
+    cashCollected: input.cashCollected,
+    transferCollected: input.transferCollected,
+    debtSigned: input.debtSigned,
+  })) {
+    if (value !== undefined && (!Number.isFinite(value) || value < 0)) {
+      throw new Error(`${field} phải là số không âm hợp lệ!`);
+    }
+  }
+
+  if (input.status !== "PARTIAL" && input.itemsReturned?.length) {
+    throw new Error("Chỉ điểm giao một phần mới được khai báo hàng trả lại!");
+  }
+
+  if (input.status === "PARTIAL" && !input.itemsReturned?.length) {
+    throw new Error("Giao một phần phải khai báo ít nhất một dòng hàng trả lại!");
+  }
+
+  const returnedItemIds = new Set<string>();
+  for (const item of input.itemsReturned || []) {
+    if (!item?.salesOrderItemId || !Number.isFinite(item.returnedQty) || item.returnedQty < 0) {
+      throw new Error("Dòng hàng trả lại không hợp lệ!");
+    }
+    if (returnedItemIds.has(item.salesOrderItemId)) {
+      throw new Error("Không được khai báo trùng dòng hàng trả lại!");
+    }
+    returnedItemIds.add(item.salesOrderItemId);
+  }
+}
+
+type ReconciliationOrder = {
+  codAmountRequired: number;
+  totalWeightKg: number;
+  items: Array<{ id: string; orderedQty: number; lineAmount: number; lineWeightKg: number }>;
+};
+
+const WEIGHT_TOLERANCE_KG = 0.001;
+
+export function validateCompletionReconciliation(
+  input: CompleteStopInput,
+  order: ReconciliationOrder
+): number {
+  const collected = (input.cashCollected ?? 0) + (input.transferCollected ?? 0) + (input.debtSigned ?? 0);
+  let expectedCollection = 0;
+
+  if (input.status === "SUCCESS") {
+    expectedCollection = order.codAmountRequired;
+  } else if (input.status === "PARTIAL") {
+    const returnedByItem = new Map(input.itemsReturned!.map((item) => [item.salesOrderItemId, item.returnedQty]));
+    let orderedAmount = 0;
+    let returnedAmount = 0;
+    for (const item of order.items) {
+      orderedAmount += item.lineAmount;
+      const returnedQty = returnedByItem.get(item.id) ?? 0;
+      if (returnedQty < 0 || returnedQty >= item.orderedQty) {
+        throw new Error(`Số lượng trả lại (${returnedQty}) phải >= 0 và < số lượng đặt (${item.orderedQty})!`);
+      }
+      returnedAmount += item.lineAmount * (returnedQty / item.orderedQty);
+    }
+    if (returnedAmount <= 0 || orderedAmount <= 0) {
+      throw new Error("Giao một phần phải có giá trị hàng trả lại hợp lệ!");
+    }
+    expectedCollection = order.codAmountRequired * ((orderedAmount - returnedAmount) / orderedAmount);
+  }
+
+  // Amounts are currently Float. A one-VND tolerance prevents representation
+  // noise while still rejecting material COD discrepancies.
+  if (Math.abs(collected - expectedCollection) > 1) {
+    throw new Error("Tổng tiền mặt, chuyển khoản và công nợ ký nhận không khớp số phải thu!");
+  }
+  return expectedCollection;
+}
+
+export function validateDeliveredWeight(input: CompleteStopInput, order: ReconciliationOrder): number {
+  const actualDeliveredKg = input.actualDeliveredKg ?? (input.status === "SUCCESS" ? order.totalWeightKg : 0);
+  if (actualDeliveredKg > order.totalWeightKg + WEIGHT_TOLERANCE_KG) {
+    throw new Error("Khối lượng thực giao không được vượt quá khối lượng đơn hàng!");
+  }
+  if (input.status === "FAILED" && actualDeliveredKg !== 0) {
+    throw new Error("Giao thất bại phải có khối lượng thực giao bằng 0!");
+  }
+  if (input.status === "SUCCESS" && Math.abs(actualDeliveredKg - order.totalWeightKg) > WEIGHT_TOLERANCE_KG) {
+    throw new Error("Giao thành công phải có khối lượng thực giao bằng khối lượng đơn hàng!");
+  }
+  if (input.status === "PARTIAL") {
+    const returnedByItem = new Map(input.itemsReturned!.map((item) => [item.salesOrderItemId, item.returnedQty]));
+    const expectedDeliveredKg = order.items.reduce((sum, item) => {
+      const returnedQty = returnedByItem.get(item.id) ?? 0;
+      return sum + item.lineWeightKg * ((item.orderedQty - returnedQty) / item.orderedQty);
+    }, 0);
+    if (actualDeliveredKg <= 0 || actualDeliveredKg >= order.totalWeightKg) {
+      throw new Error("Giao một phần phải có khối lượng thực giao lớn hơn 0 và nhỏ hơn khối lượng đơn hàng!");
+    }
+    if (Math.abs(actualDeliveredKg - expectedDeliveredKg) > WEIGHT_TOLERANCE_KG) {
+      throw new Error("Khối lượng thực giao không khớp với số lượng hàng trả lại!");
+    }
+  }
+  return actualDeliveredKg;
+}
+
+type StopAuditSnapshot = {
+  status: string;
+  actualDeliveredKg: number;
+  cashCollected: number;
+  transferCollected: number;
+  debtSigned: number;
+  proofImageUrl: string | null;
+  failOrPartialReason: string | null;
+};
+
+export function buildStopCompletionAudit(
+  actorId: string,
+  tripCode: string,
+  stopId: string,
+  before: StopAuditSnapshot,
+  after: StopAuditSnapshot
+) {
+  return {
+    employeeId: actorId,
+    action: "COMPLETE_TRIP_STOP",
+    targetId: stopId,
+    oldValue: JSON.stringify(before),
+    newValue: JSON.stringify(after),
+    note: `Hoàn tất điểm giao ${stopId} của chuyến ${tripCode}: ${before.status} → ${after.status}`,
+  };
+}
+
+export function isMatchingCompletionForReplay(
+  stop: {
+    status: string;
+    actualDeliveredKg: number;
+    cashCollected: number;
+    transferCollected: number;
+    debtSigned: number;
+    proofImageUrl: string | null;
+    failOrPartialReason: string | null;
+    salesOrder: { totalWeightKg: number; items: Array<{ id: string; returnedQty: number }> };
+  },
+  input: CompleteStopInput
+) {
+  const actualDeliveredKg = input.actualDeliveredKg ?? (input.status === "SUCCESS" ? stop.salesOrder.totalWeightKg : 0);
+  if (
+    stop.status !== input.status ||
+    stop.actualDeliveredKg !== actualDeliveredKg ||
+    stop.cashCollected !== (input.cashCollected ?? 0) ||
+    stop.transferCollected !== (input.transferCollected ?? 0) ||
+    stop.debtSigned !== (input.debtSigned ?? 0) ||
+    stop.proofImageUrl !== (input.proofImageUrl || null) ||
+    stop.failOrPartialReason !== (input.failOrPartialReason || null)
+  ) {
+    return false;
+  }
+  const returnedByItem = new Map((input.itemsReturned || []).map((item) => [item.salesOrderItemId, item.returnedQty]));
+  return stop.salesOrder.items.every((item) => item.returnedQty === (returnedByItem.get(item.id) ?? 0));
+}
+
 export class LogisticsService {
   /**
    * Tạo chuyến xe mới, gắn các đơn hàng đã chọn, xuất kho lên xe và cập nhật trạng thái đơn
    */
   static async createTrip(input: CreateTripInput) {
-    const { driverId, vehiclePlate, plannedDurationMin = 180, orderIds } = input;
+    const { driverId, vehiclePlate, plannedDurationMin = 180, orderIds, actorId } = input;
 
-    if (!orderIds || orderIds.length === 0) {
+    if (!actorId || !orderIds || orderIds.length === 0) {
       throw new Error("Cần chọn ít nhất 1 đơn hàng để tạo chuyến!");
     }
 
@@ -113,22 +295,25 @@ export class LogisticsService {
             referenceCode: tripCode,
             qtyChange: -item.orderedQty,
             inTransitChange: item.orderedQty,
+            actorId,
             note: `Xuất kho lên xe Tera V6 chuyến ${tripCode} giao cho đơn ${order.orderCode}`,
           });
         }
       }
 
       return trip;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**
    * Tài xế bấm Xuất phát rời kho
    */
-  static async departTrip(tripId: string) {
+  static async departTrip(tripId: string, actor: TripActor) {
     const trip = await prisma.deliveryTrip.findUnique({ where: { id: tripId } });
     if (!trip) throw new Error("Chuyến xe không tồn tại!");
-    if (trip.status !== "DRAFT") throw new Error("Chuyến xe đã xuất phát trước đó!");
+    assertTripActor(trip, actor);
+    if (trip.status === "CLOSED") throw new Error("Chuyến xe đã được khóa sổ!");
+    if (trip.status !== "DRAFT") throw new Error("Chuyến xe không ở trạng thái chờ xuất phát!");
 
     return await prisma.deliveryTrip.update({
       where: { id: tripId },
@@ -142,9 +327,19 @@ export class LogisticsService {
   /**
    * Tài xế bấm Đã đến điểm giao
    */
-  static async arriveAtStop(stopId: string) {
-    const stop = await prisma.deliveryTripStop.findUnique({ where: { id: stopId } });
+  static async arriveAtStop(tripId: string, stopId: string, actor: TripActor) {
+    const stop = await prisma.deliveryTripStop.findUnique({
+      where: { id: stopId },
+      include: { trip: true },
+    });
     if (!stop) throw new Error("Điểm giao không tồn tại!");
+    if (stop.tripId !== tripId) throw new Error("Điểm giao không thuộc chuyến xe này!");
+    assertTripActor(stop.trip, actor);
+    if (stop.trip.status === "CLOSED") throw new Error("Chuyến xe đã được khóa sổ!");
+    if (stop.trip.status !== "ON_ROAD") throw new Error("Chuyến xe chưa ở trạng thái đang giao!");
+    if (TERMINAL_STOP_STATUSES.has(stop.status)) {
+      throw new Error("Điểm giao đã hoàn tất, không thể cập nhật!");
+    }
 
     return await prisma.deliveryTripStop.update({
       where: { id: stopId },
@@ -157,7 +352,13 @@ export class LogisticsService {
   /**
    * Tài xế hoàn thành điểm giao (SUCCESS, PARTIAL, hoặc FAILED)
    */
-  static async completeStop(stopId: string, input: CompleteStopInput) {
+  static async completeStop(
+    tripId: string,
+    stopId: string,
+    input: CompleteStopInput,
+    actor: TripActor
+  ) {
+    validateCompleteStopInput(input);
     return await prisma.$transaction(async (tx) => {
       const stop = await tx.deliveryTripStop.findUnique({
         where: { id: stopId },
@@ -168,14 +369,27 @@ export class LogisticsService {
       });
 
       if (!stop) throw new Error("Điểm giao không tồn tại!");
-
+      if (stop.tripId !== tripId) throw new Error("Điểm giao không thuộc chuyến xe này!");
+      assertTripActor(stop.trip, actor);
+      if (stop.trip.status === "CLOSED") throw new Error("Chuyến xe đã được khóa sổ!");
+      if (stop.trip.status !== "ON_ROAD") {
+        throw new Error("Chuyến xe chưa ở trạng thái đang giao!");
+      }
       const actualDeliveredKg = input.actualDeliveredKg ?? (input.status === "SUCCESS" ? stop.salesOrder.totalWeightKg : 0);
       const cashCollected = input.cashCollected ?? 0;
       const transferCollected = input.transferCollected ?? 0;
       const debtSigned = input.debtSigned ?? 0;
 
-      // Cập nhật chi tiết các mặt hàng trả lại nếu partial.
-      // deliveredQty = orderedQty - returnedQty (không decrement từ 0 gây âm).
+      if (TERMINAL_STOP_STATUSES.has(stop.status)) {
+        if (isMatchingCompletionForReplay(stop, input)) return stop;
+        throw new Error("Điểm giao đã hoàn tất với dữ liệu khác, không thể cập nhật!");
+      }
+
+      validateCompletionReconciliation(input, stop.salesOrder);
+      validateDeliveredWeight(input, stop.salesOrder);
+
+      // Validate all partial lines before claiming the stop, then claim it with
+      // a conditional write so a duplicate/concurrent POST cannot post twice.
       if (input.status === "PARTIAL" && input.itemsReturned) {
         for (const ret of input.itemsReturned) {
           const targetItem = stop.salesOrder.items.find((i: any) => i.id === ret.salesOrderItemId);
@@ -187,19 +401,11 @@ export class LogisticsService {
               `Số lượng trả lại (${ret.returnedQty}) phải >= 0 và < số lượng đặt (${targetItem.orderedQty})!`
             );
           }
-          await tx.salesOrderItem.update({
-            where: { id: ret.salesOrderItemId },
-            data: {
-              returnedQty: ret.returnedQty,
-              deliveredQty: targetItem.orderedQty - ret.returnedQty,
-            },
-          });
         }
       }
 
-      // Cập nhật stop
-      const updatedStop = await tx.deliveryTripStop.update({
-        where: { id: stopId },
+      const claimedStop = await tx.deliveryTripStop.updateMany({
+        where: { id: stopId, tripId, status: "PENDING" },
         data: {
           status: input.status,
           actualDeliveredKg,
@@ -211,6 +417,31 @@ export class LogisticsService {
           completedAt: new Date(),
         },
       });
+
+      if (claimedStop.count !== 1) {
+        const currentStop = await tx.deliveryTripStop.findUnique({
+          where: { id: stopId },
+          include: { salesOrder: { include: { items: true } } },
+        });
+        if (currentStop && isMatchingCompletionForReplay(currentStop, input)) return currentStop;
+        throw new Error("Điểm giao đã hoàn tất với dữ liệu khác, không thể cập nhật!");
+      }
+
+      // deliveredQty = orderedQty - returnedQty (never decrement from zero).
+      if (input.status === "PARTIAL" && input.itemsReturned) {
+        for (const ret of input.itemsReturned) {
+          const targetItem = stop.salesOrder.items.find((i: any) => i.id === ret.salesOrderItemId)!;
+          await tx.salesOrderItem.update({
+            where: { id: ret.salesOrderItemId },
+            data: {
+              returnedQty: ret.returnedQty,
+              deliveredQty: targetItem.orderedQty - ret.returnedQty,
+            },
+          });
+        }
+      }
+
+      const updatedStop = await tx.deliveryTripStop.findUniqueOrThrow({ where: { id: stopId } });
 
       // Cập nhật đơn hàng tương ứng
       let orderDeliveryStatus = "IN_TRANSIT";
@@ -269,19 +500,31 @@ export class LogisticsService {
         },
       });
 
+      await tx.auditLog.create({
+        data: buildStopCompletionAudit(actor.id, stop.trip.tripCode, stopId, stop, updatedStop),
+      });
+
       return updatedStop;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**
    * Tài xế bấm Đã về tới kho
    */
-  static async returnToWarehouse(tripId: string) {
+  static async returnToWarehouse(tripId: string, actor: TripActor) {
     const trip = await prisma.deliveryTrip.findUnique({
       where: { id: tripId },
       include: { stops: true },
     });
     if (!trip) throw new Error("Chuyến xe không tồn tại!");
+    assertTripActor(trip, actor);
+    if (trip.status === "CLOSED") throw new Error("Chuyến xe đã được khóa sổ!");
+    if (trip.status !== "ON_ROAD") {
+      throw new Error("Chuyến xe chưa ở trạng thái đang giao!");
+    }
+    if (trip.stops.some((stop) => !TERMINAL_STOP_STATUSES.has(stop.status))) {
+      throw new Error("Phải hoàn tất tất cả điểm giao trước khi về kho!");
+    }
 
     return await prisma.deliveryTrip.update({
       where: { id: tripId },
@@ -296,9 +539,11 @@ export class LogisticsService {
    * Kế toán xác nhận đã thu đủ tiền mặt COD vào két
    */
   static async settleCash(tripId: string, settledByUserId: string) {
+    if (!settledByUserId) throw new Error("Thiếu tác nhân đối soát COD");
     return await prisma.$transaction(async (tx) => {
       const trip = await tx.deliveryTrip.findUnique({ where: { id: tripId } });
       if (!trip) throw new Error("Chuyến xe không tồn tại!");
+      if (trip.status !== "WAITING_SETTLE") throw new Error("Chuyến xe chưa ở trạng thái chờ đối soát COD!");
       if (trip.cashSettledAt) throw new Error("Chuyến xe đã được xác nhận thu tiền mặt COD!");
 
       const updated = await tx.deliveryTrip.update({
@@ -319,20 +564,25 @@ export class LogisticsService {
       });
 
       return updated;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**
    * Thủ kho xác nhận đã nhận lại đủ hàng hoàn trên xe về kho
    */
   static async settleReturnStock(tripId: string, settledByUserId: string) {
+    if (!settledByUserId) throw new Error("Thiếu tác nhân đối soát hàng hoàn");
     return await prisma.$transaction(async (tx) => {
       const trip = await tx.deliveryTrip.findUnique({
         where: { id: tripId },
         include: { stops: { include: { salesOrder: { include: { items: true } } } } },
       });
       if (!trip) throw new Error("Chuyến xe không tồn tại!");
+      if (trip.status !== "WAITING_SETTLE") throw new Error("Chuyến xe chưa ở trạng thái chờ đối soát hàng hoàn!");
       if (trip.returnStockSettledAt) throw new Error("Chuyến xe đã được xác nhận nhận lại hàng hoàn!");
+      if (!trip.stops.some((stop) => stop.status === "FAILED" || stop.status === "PARTIAL")) {
+        throw new Error("Chuyến xe không có hàng hoàn cần đối soát!");
+      }
 
       const updated = await tx.deliveryTrip.update({
         where: { id: tripId },
@@ -352,7 +602,7 @@ export class LogisticsService {
       });
 
       return updated;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**

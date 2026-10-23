@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ProcurementService } from "@/services/procurement.service";
-import { requireSession, requireRole } from "@/lib/route-guard";
+import { requireSession } from "@/lib/route-guard";
+import { canAccessProcurement, procurementErrorResponse } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,9 @@ export async function GET(
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
-    if (forbidden) return forbidden;
+    if (!canAccessProcurement(auth.user.role, "three-way-match")) {
+      return NextResponse.json({ success: false, error: "Không có quyền đối chiếu ba bên" }, { status: 403 });
+    }
     const { id } = params;
     const { searchParams } = new URL(req.url);
     const invoiceId = searchParams.get("invoiceId") || undefined;
@@ -20,7 +22,8 @@ export async function GET(
     const result = await ProcurementService.performThreeWayMatching(id, invoiceId);
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {
-    console.error("[API 3-Way Matching GET] Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    const failure = procurementErrorResponse(error);
+    console.error("[API 3-Way Matching GET]", failure.error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

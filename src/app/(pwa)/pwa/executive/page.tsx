@@ -1,0 +1,2 @@
+import PwaShell,{PwaActionGrid} from "@/components/pwa/PwaShell";
+export default function Page(){return <PwaShell title="Điều hành" subtitle="Chỉ số, cảnh báo và phê duyệt"><PwaActionGrid actions={[{href:"/dashboard",label:"Tổng quan",description:"KPI vận hành theo quyền"},{href:"/debts",label:"Công nợ",description:"Tuổi nợ và cảnh báo"},{href:"/logistics/trips",label:"Giao hàng",description:"Tình trạng các chuyến"},{href:"/finance/transactions",label:"Tài chính",description:"Thu chi và phê duyệt"}]}/></PwaShell>}

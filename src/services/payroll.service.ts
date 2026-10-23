@@ -1,6 +1,25 @@
 // File: src/services/payroll.service.ts
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { InventoryService } from "./inventory.service";
+
+export function planTransitClose(status: "SUCCESS" | "PARTIAL" | "FAILED", orderedQty: number, returnedQty = 0) {
+  if (!Number.isFinite(orderedQty) || !Number.isFinite(returnedQty) || orderedQty < 0 || returnedQty < 0 || returnedQty > orderedQty) {
+    throw new Error("Số lượng đóng chuyến không hợp lệ");
+  }
+  if (status === "FAILED") return [{ type: "IN_RETURN_TRIP" as const, qtyChange: orderedQty, inTransitChange: -orderedQty }];
+  if (status === "SUCCESS") return [{ type: "OUT_DISPATCH" as const, qtyChange: 0, inTransitChange: -orderedQty }];
+  const deliveredQty = orderedQty - returnedQty;
+  return [
+    ...(deliveredQty ? [{ type: "OUT_DISPATCH" as const, qtyChange: 0, inTransitChange: -deliveredQty }] : []),
+    ...(returnedQty ? [{ type: "IN_RETURN_TRIP" as const, qtyChange: returnedQty, inTransitChange: -returnedQty }] : []),
+  ];
+}
+
+export function assertTripCloseable(status: string, stops: Array<{ status: string }>) {
+  if (status !== "WAITING_SETTLE") throw new Error("Chuyến xe phải ở trạng thái chờ đối soát trước khi khóa sổ");
+  if (stops.some((stop) => !["SUCCESS", "PARTIAL", "FAILED"].includes(stop.status))) throw new Error("Phải hoàn tất tất cả điểm giao trước khi khóa sổ");
+}
 
 export class PayrollService {
   /**
@@ -25,6 +44,7 @@ export class PayrollService {
    * Điều kiện tiên quyết: Đã nộp tiền mặt COD + Đã đối soát hàng hoàn trên xe (nếu có)
    */
   static async settleAndCloseTrip(tripId: string, settledByUserId: string) {
+    if (!settledByUserId) throw new Error("Thiếu tác nhân khóa sổ chuyến xe");
     return await prisma.$transaction(async (tx) => {
       const trip = await tx.deliveryTrip.findUnique({
         where: { id: tripId },
@@ -42,6 +62,7 @@ export class PayrollService {
 
       if (!trip) throw new Error("Chuyến xe không tồn tại");
       if (trip.status === "CLOSED") throw new Error("Chuyến xe này đã được khóa sổ!");
+      assertTripCloseable(trip.status, trip.stops);
 
       // Kiểm tra xem có điểm nào có hàng rớt lại không (FAILED hoặc PARTIAL)
       let hasReturnGoods: boolean = false;
@@ -87,6 +108,7 @@ export class PayrollService {
               referenceCode: trip.tripCode,
               qtyChange: item.orderedQty,
               inTransitChange: -item.orderedQty,
+              actorId: settledByUserId,
               note: `Nhập lại kho hàng giao trượt chuyến ${trip.tripCode} đơn ${stop.salesOrder.orderCode}`,
             });
           }
@@ -95,16 +117,20 @@ export class PayrollService {
             data: { deliveryStatus: "WAITING_DISPATCH" },
           });
         } else if (stop.status === "PARTIAL") {
-          // Trả phần hàng dư về kho
+          // Partial delivery consumes truck balance twice: delivered stock leaves
+          // the truck and returned stock comes back to warehouse. Together this
+          // must equal the originally dispatched quantity.
           for (const item of stop.salesOrder.items) {
-            if (item.returnedQty > 0) {
+            const returnedQty = item.returnedQty;
+            for (const movement of planTransitClose("PARTIAL", item.orderedQty, returnedQty)) {
               await InventoryService.recordTransactionInTx(tx, {
                 productId: item.productId,
-                type: "IN_RETURN_TRIP",
+                type: movement.type,
                 referenceCode: trip.tripCode,
-                qtyChange: item.returnedQty,
-                inTransitChange: -item.returnedQty,
-                note: `Nhập lại kho hàng hoàn 1 phần chuyến ${trip.tripCode} đơn ${stop.salesOrder.orderCode}`,
+                qtyChange: movement.qtyChange,
+                inTransitChange: movement.inTransitChange,
+                actorId: settledByUserId,
+                note: movement.type === "IN_RETURN_TRIP" ? `Nhập lại kho hàng hoàn 1 phần chuyến ${trip.tripCode} đơn ${stop.salesOrder.orderCode}` : `Khách nhận một phần chuyến ${trip.tripCode} đơn ${stop.salesOrder.orderCode}`,
               });
             }
           }
@@ -121,6 +147,7 @@ export class PayrollService {
               referenceCode: trip.tripCode,
               qtyChange: 0,
               inTransitChange: -item.orderedQty,
+              actorId: settledByUserId,
               note: `Khách nhận đủ hàng chuyến ${trip.tripCode} đơn ${stop.salesOrder.orderCode}`,
             });
           }
@@ -166,7 +193,7 @@ export class PayrollService {
       });
 
       return updatedTrip;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**

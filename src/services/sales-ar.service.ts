@@ -1,5 +1,6 @@
 // File: src/services/sales-ar.service.ts
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { InventoryService } from "./inventory.service";
 
 export interface CreateCustomerInput {
@@ -30,7 +31,7 @@ export interface CreateSalesReturnInput {
   customerId?: string;
   tripCode?: string;
   reason: string;
-  receivedById?: string;
+  receivedById: string;
   note?: string;
   items: ReturnItemInput[];
 }
@@ -301,10 +302,11 @@ export class SalesARService {
   static async processSalesReturn(input: CreateSalesReturnInput) {
     const { salesOrderId, customerId, tripCode, reason, receivedById, note, items } = input;
 
-    if (!items || items.length === 0) {
+    if (!receivedById || !items || items.length === 0) {
       throw new Error("Phiếu trả hàng cần có ít nhất 1 mặt hàng!");
     }
 
+    if (new Set(items.map((item) => item.productId)).size !== items.length || items.some((item) => !item.productId || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unitPrice) || item.unitPrice < 0 || !["GOOD", "DAMAGED"].includes(item.condition))) throw new Error("Dòng hàng trả không hợp lệ");
     return await prisma.$transaction(async (tx) => {
       // 1. Sinh mã phiếu trả hàng TH-YYYYMMDD-XXX
       const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -347,7 +349,8 @@ export class SalesARService {
         // Xử lý kho — BẮT BUỘC qua Single Source of Truth (Luật Thép Số 1).
         // Hàng GOOD: nhập lại kho bán tiếp (IN_RETURN_TRIP, tồn tổng không đổi).
         // Hàng DAMAGED: hàng hư trên xe, tiêu hủy (ADJUSTMENT chỉ giảm inTransit).
-        const truckQty = Math.min(product.inTransitStock, it.quantity);
+        if (product.inTransitStock < it.quantity) throw new Error("Số lượng hàng trả vượt tồn đang trên xe; cần đối soát chuyến giao trước");
+        const truckQty = it.quantity;
         if (it.condition === "GOOD") {
           await InventoryService.recordTransactionInTx(tx, {
             productId: it.productId,
@@ -355,6 +358,7 @@ export class SalesARService {
             referenceCode: returnCode,
             qtyChange: it.quantity,
             inTransitChange: -truckQty,
+            actorId: receivedById,
             note: `Nhập lại kho hàng hoàn tốt từ phiếu ${returnCode} ${tripCode ? `(Chuyến ${tripCode})` : ""}`,
           });
         } else {
@@ -364,6 +368,7 @@ export class SalesARService {
             referenceCode: returnCode,
             qtyChange: 0,
             inTransitChange: -truckQty,
+            actorId: receivedById,
             note: `Xuất hủy hỏng vỡ từ phiếu ${returnCode}: ${it.reason || "Hàng vỡ/hỏng khi giao vận"}`,
           });
 
@@ -497,7 +502,7 @@ export class SalesARService {
       });
 
       return returnRecord;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   /**

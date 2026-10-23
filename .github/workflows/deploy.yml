@@ -11,6 +11,9 @@ jobs:
   test:
     name: Run Automated Tests
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci_user:ci_password@127.0.0.1:5432/sonkhang_ci?schema=public
+      DB_PASSWORD: ci_password
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,8 +30,22 @@ jobs:
       - name: Run Typecheck
         run: npx tsc --noEmit
 
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
       - name: Run Vitest Unit Tests
         run: npm run test
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Build production Docker image
+        run: docker build --pull --tag sonkhang-erp:${{ github.sha }} .
+
+      - name: Validate Docker Compose contract
+        env:
+          ENV_FILE: .env.production.example
+        run: docker compose config -q
 
   deploy:
     name: Deploy to VPS via SSH
@@ -57,18 +74,100 @@ jobs:
             
             cd $TARGET_DIR
 
+            if [ ! -f .env.production ]; then
+              echo "❌ [Deploy] Thiếu $TARGET_DIR/.env.production"
+              exit 1
+            fi
+
+            set -a
+            . ./.env.production
+            set +a
+
             # 2. Pull code mới nhất từ branch hiện tại
             echo "📥 [Deploy] Đang pull code mới nhất..."
             git fetch --all
             git reset --hard origin/${{ github.ref_name }}
 
-            # 3. Build và khởi động lại Docker containers
-            echo "🐳 [Deploy] Đang build và restart container..."
-            docker compose down --remove-orphans || true
-            docker compose up -d --build
+            # 3. Production chỉ được triển khai bằng migration có version.
+            if [ ! -f prisma/migrations/migration_lock.toml ]; then
+              echo "❌ [Deploy] Chưa có Prisma migrations versioned; giữ nguyên phiên bản đang chạy."
+              exit 1
+            fi
 
-            # 4. Kiểm tra trạng thái các service
-            echo "🔍 [Deploy] Kiểm tra container..."
+            # 4. Build image mới trước, trong khi container hiện tại vẫn phục vụ.
+            NEW_IMAGE="sonkhang-erp:${{ github.sha }}"
+            ROLLBACK_IMAGE="sonkhang-erp:rollback-${{ github.run_id }}"
+            PREVIOUS_IMAGE_ID=$(docker compose images -q app 2>/dev/null | head -n 1 || true)
+
+            if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+              docker image tag "$PREVIOUS_IMAGE_ID" "$ROLLBACK_IMAGE"
+              echo "↩️ [Deploy] Đã giữ image rollback: $ROLLBACK_IMAGE"
+            fi
+
+            echo "🐳 [Deploy] Build image mới: $NEW_IMAGE"
+            docker build --pull --tag "$NEW_IMAGE" .
+
+            # Đảm bảo PostgreSQL chạy và sẵn sàng trước migration.
+            docker compose up -d db
+            for attempt in $(seq 1 12); do
+              if docker compose exec -T db pg_isready -U postgres -d sonkhang_erp; then
+                break
+              fi
+              if [ "$attempt" -eq 12 ]; then
+                echo "❌ [Deploy] PostgreSQL không sẵn sàng; giữ nguyên app hiện tại."
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # Migration phải thành công trước khi thay container ứng dụng.
+            APP_IMAGE="$NEW_IMAGE" docker compose run --rm --no-deps app ./node_modules/.bin/prisma migrate deploy
+            APP_IMAGE="$NEW_IMAGE" docker compose up -d --no-deps --force-recreate app
+
+            # 5. Gate release bằng readiness (DB + core schema), không phải liveness.
+            echo "🔍 [Deploy] Chờ readiness của ứng dụng..."
+            DEPLOY_READY=false
+            for attempt in $(seq 1 12); do
+              if docker compose exec -T app wget --no-verbose --tries=1 --spider http://localhost:3000/api/ready; then
+                DEPLOY_READY=true
+                echo "✅ [Deploy] Readiness đạt sau $((attempt * 5)) giây."
+                break
+              fi
+              sleep 5
+            done
+
+            if [ "$DEPLOY_READY" != "true" ]; then
+              echo "❌ [Deploy] Phiên bản mới không đạt readiness. Log app:"
+              docker compose logs --tail=200 app
+
+              if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+                echo "↩️ [Deploy] Khôi phục image trước đó..."
+                APP_IMAGE="$ROLLBACK_IMAGE" docker compose up -d --no-deps --force-recreate app
+
+                ROLLBACK_READY=false
+                for rollback_attempt in $(seq 1 12); do
+                  if docker compose exec -T app wget --no-verbose --tries=1 --spider http://localhost:3000/api/ready; then
+                    ROLLBACK_READY=true
+                    echo "✅ [Deploy] Phiên bản trước đã được khôi phục và sẵn sàng."
+                    break
+                  fi
+                  sleep 5
+                done
+
+                if [ "$ROLLBACK_READY" != "true" ]; then
+                  echo "❌ [Deploy] CẢNH BÁO NGHIÊM TRỌNG: phiên bản rollback cũng không đạt readiness."
+                  docker compose logs --tail=200 app
+                fi
+              else
+                echo "❌ [Deploy] Đây là lần triển khai đầu tiên, không có image để rollback."
+              fi
+              exit 1
+            fi
+
+            # Nginx chỉ được tạo/cập nhật sau khi app mới sẵn sàng.
+            APP_IMAGE="$NEW_IMAGE" docker compose up -d --no-deps nginx
+
+            echo "🔍 [Deploy] Trạng thái container:"
             docker compose ps
 
             echo "✅ [Deploy] Triển khai thành công trên VPS!"

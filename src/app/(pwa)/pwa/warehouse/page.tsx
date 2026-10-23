@@ -1,0 +1,2 @@
+import PwaShell,{PwaActionGrid} from "@/components/pwa/PwaShell";
+export default function Page(){return <PwaShell title="Kho hàng" subtitle="Nhận, kiểm đếm và hàng hoàn"><PwaActionGrid actions={[{href:"/purchasing/invoices",label:"Nhận hàng",description:"Phiếu nhập và hóa đơn"},{href:"/inventory/stocktakes",label:"Kiểm kê",description:"Ghi nhận số kiểm đếm"},{href:"/inventory/issues",label:"Hàng hỏng",description:"Đối chiếu chứng từ (chỉ đọc)"},{href:"/delivery/trips",label:"Hàng hoàn",description:"Chuyến chờ nhận hàng"}]}/></PwaShell>}

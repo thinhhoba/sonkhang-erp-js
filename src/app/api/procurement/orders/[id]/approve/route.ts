@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ProcurementService } from "@/services/procurement.service";
-import { requireSession, requireRole } from "@/lib/route-guard";
+import { requireSession } from "@/lib/route-guard";
+import { canWriteProcurement } from "@/lib/procurement";
+import { procurementErrorResponse } from "@/lib/procurement";
 
 export const dynamic = "force-dynamic";
 
@@ -11,14 +13,15 @@ export async function POST(
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    const forbidden = requireRole(auth.user, ["DISPATCHER", "ADMIN"]);
-    if (forbidden) return forbidden;
     const { id } = params;
-    const body = await req.json().catch(() => ({}));
-    const updated = await ProcurementService.approvePurchaseOrder(id, body.approvedById);
+    if (!canWriteProcurement(auth.user.role)) {
+      return NextResponse.json({ success: false, error: "Không có quyền phê duyệt đơn mua hàng" }, { status: 403 });
+    }
+    const updated = await ProcurementService.approvePurchaseOrder(id, auth.user.id!);
     return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
-    console.error("[API Purchase Order Approve] Error:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    const failure = procurementErrorResponse(error);
+    console.error("[API Purchase Order Approve]", failure.error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

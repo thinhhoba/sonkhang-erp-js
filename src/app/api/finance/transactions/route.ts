@@ -6,6 +6,8 @@ export async function GET(req: Request) {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
+    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
+    if (forbidden) return forbidden;
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type"); // RECEIPT | PAYMENT
     const status = searchParams.get("status"); // PENDING | APPROVED | REJECTED

@@ -75,7 +75,7 @@ interface PurchaseOrder {
   supplier: Supplier;
   expectedDeliveryDate: string | null;
   paymentTerms: string;
-  status: "DRAFT" | "APPROVED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "PARTIAL" | "COMPLETED" | "CANCELLED";
   totalAmount: number;
   vatAmount: number;
   grandTotal: number;
@@ -138,6 +138,7 @@ export default function PurchaseOrdersPage() {
   const [matchingDrawerOpen, setMatchingDrawerOpen] = useState(false);
   const [loadingMatch, setLoadingMatch] = useState(false);
   const [matchResult, setMatchResult] = useState<ThreeWayMatchingResult | null>(null);
+  const [canWrite, setCanWrite] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -179,6 +180,7 @@ export default function PurchaseOrdersPage() {
 
   useEffect(() => {
     fetchDependencies();
+    fetch("/api/auth/session").then((response) => response.json()).then((session) => setCanWrite(["ADMIN", "ACCOUNTANT"].includes(session?.user?.role))).catch(() => setCanWrite(false));
   }, []);
 
   // Mở Drawer tạo PO
@@ -234,6 +236,15 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  const handleSubmitForApproval = async (poId: string) => {
+    try {
+      const res = await fetch(`/api/procurement/orders/${poId}/submit`, { method: "POST" });
+      const result = await res.json();
+      if (result.success) { message.success("Đã trình duyệt PO."); fetchOrders(); }
+      else message.error("Lỗi trình duyệt: " + result.error);
+    } catch (err: any) { message.error("Lỗi hệ thống: " + err.message); }
+  };
+
   // Mở Drawer Đối chiếu 3 bên
   const handleOpen3WayMatching = async (poId: string) => {
     setMatchingDrawerOpen(true);
@@ -263,7 +274,9 @@ export default function PurchaseOrdersPage() {
   const getStatusTag = (st: string) => {
     switch (st) {
       case "DRAFT":
-        return <Tag color="warning" icon={<ClockCircleOutlined />}>Chờ phê duyệt</Tag>;
+        return <Tag color="warning" icon={<ClockCircleOutlined />}>Bản nháp</Tag>;
+      case "SUBMITTED":
+        return <Tag color="cyan" icon={<ClockCircleOutlined />}>Chờ phê duyệt</Tag>;
       case "APPROVED":
         return <Tag color="processing" icon={<SafetyCertificateOutlined />}>Đã phê duyệt (Chờ giao)</Tag>;
       case "PARTIAL":
@@ -284,9 +297,7 @@ export default function PurchaseOrdersPage() {
       width: 150,
       render: (_: any, r: PurchaseOrder) => (
         <div>
-          <Text strong style={{ color: "#0958d9" }}>
-            {r.poCode}
-          </Text>
+          <a href={`/purchasing/purchase-orders/${r.id}`}><Text strong style={{ color: "#0958d9" }}>{r.poCode}</Text></a>
           <br />
           <Text type="secondary" style={{ fontSize: 11 }}>
             {dayjs(r.createdAt).format("DD/MM/YYYY HH:mm")}
@@ -362,27 +373,32 @@ export default function PurchaseOrdersPage() {
       align: "center" as const,
       render: (_: any, r: PurchaseOrder) => (
         <Space size={4}>
-          {r.status === "DRAFT" && (
+          {canWrite && r.status === "DRAFT" && (
             <Popconfirm
-              title="Phê duyệt đơn đặt hàng này?"
-              description="Sau khi phê duyệt, kho sẽ sẵn sàng tiếp nhận hàng hóa từ NCC."
-              onConfirm={() => handleApprovePO(r.id)}
-              okText="Duyệt"
+              title="Trình duyệt đơn đặt hàng này?"
+              description="PO sẽ được khóa sửa và chuyển sang trạng thái chờ duyệt."
+              onConfirm={() => handleSubmitForApproval(r.id)}
+              okText="Trình duyệt"
               cancelText="Hủy"
             >
-              <Button type="primary" size="small" style={{ background: "#52c41a", borderColor: "#52c41a" }}>
-                Duyệt PO
+              <Button type="primary" size="small">
+                Trình duyệt
               </Button>
             </Popconfirm>
           )}
+          {canWrite && r.status === "SUBMITTED" && (
+            <Popconfirm title="Phê duyệt PO đã trình?" onConfirm={() => handleApprovePO(r.id)} okText="Duyệt" cancelText="Hủy">
+              <Button type="primary" size="small" style={{ background: "#52c41a", borderColor: "#52c41a" }}>Duyệt PO</Button>
+            </Popconfirm>
+          )}
 
-          <Button
+          {canWrite && <Button
             size="small"
             icon={<AuditOutlined />}
-            onClick={() => handleOpen3WayMatching(r.id)}
+            href={`/purchasing/three-way-match/${r.id}`}
           >
             Đối chiếu 3 bên
-          </Button>
+          </Button>}
         </Space>
       ),
     },
@@ -410,14 +426,14 @@ export default function PurchaseOrdersPage() {
         </div>
 
         <Space>
-          <Button
+          {canWrite && <Button
             type="primary"
             icon={<PlusOutlined />}
-            onClick={handleOpenCreatePO}
+            href="/purchasing/purchase-orders/new"
             style={{ background: "#1890ff" }}
           >
             Tạo Đơn Đặt Hàng Mới (PO)
-          </Button>
+          </Button>}
           <Button icon={<SyncOutlined spin={loading} />} onClick={fetchOrders}>
             Làm mới
           </Button>

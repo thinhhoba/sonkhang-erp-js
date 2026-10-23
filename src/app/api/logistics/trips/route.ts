@@ -69,6 +69,7 @@ export async function POST(req: Request) {
     }
 
     const trip = await LogisticsService.createTrip({
+      actorId: auth.user.id!,
       driverId,
       vehiclePlate,
       plannedDurationMin,

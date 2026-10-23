@@ -8,19 +8,21 @@ export async function GET() {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
+    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN", "WAREHOUSE"]);
     if (forbidden) return forbidden;
     const products = await prisma.product.findMany({
       orderBy: { sku: "asc" },
-      include: {
-        _count: {
-          select: { inventoryLogs: true },
-        },
+      select: auth.user.role === "WAREHOUSE" ? {
+        id: true, sku: true, name: true, baseUnit: true, currentStock: true, inTransitStock: true,
+        location: { select: { code: true, name: true } }, _count: { select: { inventoryLogs: true } },
+      } : {
+        id: true, sku: true, name: true, baseUnit: true, currentStock: true, inTransitStock: true, avgCostPrice: true,
+        location: { select: { code: true, name: true } }, _count: { select: { inventoryLogs: true } },
       },
     });
 
     return NextResponse.json({ success: true, data: products });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ success: false, error: "Không thể tải danh mục sản phẩm" }, { status: 500 });
   }
 }

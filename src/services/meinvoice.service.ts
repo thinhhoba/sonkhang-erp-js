@@ -1,5 +1,6 @@
 // File: src/services/meinvoice.service.ts
 import prisma from "@/lib/prisma";
+import { ProcurementDomainError } from "@/lib/procurement";
 
 // ==========================================
 // CẤU TRÚC DỮ LIỆU TỪ MISA MEINVOICEBOT (INBOT)
@@ -192,7 +193,7 @@ export class MeInvoiceService {
         include: { purchaseInvoice: true },
       });
 
-      if (!item) throw new Error("Không tìm thấy dòng hàng hóa đơn");
+      if (!item) throw new ProcurementDomainError("Không tìm thấy dòng hàng hóa đơn", 404);
 
       // 1. Lưu ghi nhớ vào bảng Ánh xạ để tự động học cho các hóa đơn sau
       await tx.supplierProductMapping.upsert({

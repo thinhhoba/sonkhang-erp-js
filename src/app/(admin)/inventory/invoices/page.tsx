@@ -98,6 +98,7 @@ export default function InvoicesAndInventoryPage() {
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([]);
   const [products, setProducts] = useState<InternalProduct[]>([]);
   const [simulating, setSimulating] = useState(false);
+  const [canSimulate, setCanSimulate] = useState(false);
 
   // Thẻ kho drawer state
   const [ledgerDrawerVisible, setLedgerDrawerVisible] = useState(false);
@@ -127,6 +128,7 @@ export default function InvoicesAndInventoryPage() {
 
   useEffect(() => {
     loadData();
+    fetch("/api/auth/session").then((response) => response.json()).then((session) => setCanSimulate(["ADMIN", "ACCOUNTANT"].includes(session?.user?.role))).catch(() => setCanSimulate(false));
   }, []);
 
   // 2. Giả lập kéo hóa đơn mới từ MISA meInvoiceBot
@@ -183,7 +185,7 @@ export default function InvoicesAndInventoryPage() {
           <Text
             strong
             style={{ color: "#0958d9", cursor: "pointer" }}
-            onClick={() => router.push(`/inventory/invoices/${r.id}`)}
+            onClick={() => router.push(`/purchasing/invoices/${r.id}`)}
           >
             {r.invoiceNumber}
           </Text>
@@ -263,7 +265,7 @@ export default function InvoicesAndInventoryPage() {
         <Button
           type="primary"
           size="small"
-          onClick={() => router.push(`/inventory/invoices/${r.id}`)}
+          onClick={() => router.push(`/purchasing/invoices/${r.id}`)}
         >
           {r.status === "PENDING_MAP" ? "Gán mã NCC" : r.status === "PENDING_STOCK_IMPORT" ? "Nhập kho" : "Xem HĐ"}
         </Button>
@@ -379,7 +381,7 @@ export default function InvoicesAndInventoryPage() {
         </div>
 
         <Space>
-          <Button
+          {canSimulate && <Button
             type="primary"
             icon={<ThunderboltFilled />}
             style={{ background: "#722ed1", borderColor: "#722ed1" }}
@@ -387,7 +389,7 @@ export default function InvoicesAndInventoryPage() {
             onClick={handleSimulateInvoice}
           >
             ⚡ Giả lập kéo HĐ mới từ meInvoiceBot
-          </Button>
+          </Button>}
 
           <Button icon={<SyncOutlined spin={loading} />} onClick={loadData}>
             Làm mới

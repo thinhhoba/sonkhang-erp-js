@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { InventoryService } from "@/services/inventory.service";
 import { requireSession, requireRole } from "@/lib/route-guard";
+import { procurementErrorResponse } from "@/lib/procurement";
 
 export async function POST(req: Request) {
   try {
@@ -18,10 +19,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const updatedInvoice = await InventoryService.importPurchaseInvoiceToStock(invoiceId);
+    const updatedInvoice = await InventoryService.importPurchaseInvoiceToStock(invoiceId, auth.user.id!);
 
     return NextResponse.json({ success: true, data: updatedInvoice });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    const failure = procurementErrorResponse(error);
+    return NextResponse.json({ success: false, error: failure.error }, { status: failure.status });
   }
 }

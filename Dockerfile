@@ -14,6 +14,8 @@ RUN npm ci
 FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
+ARG DATABASE_URL="postgresql://build_user:build_password@127.0.0.1:5432/sonkhang_build?schema=public"
+ENV DATABASE_URL=$DATABASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -40,5 +42,6 @@ COPY --from=builder /app/prisma ./prisma
 USER nextjs
 EXPOSE 3000
 
-# Entrypoint: migrate DB rồi start standalone server
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Production fail-closed: không chạy app khi repository chưa có migration
+# versioned. Tuyệt đối không thay thế bằng `prisma db push` trên production.
+CMD ["sh", "-c", "test -f prisma/migrations/migration_lock.toml || { echo >&2 'FATAL: versioned Prisma migrations are required for production.'; exit 1; }; ./node_modules/.bin/prisma migrate deploy && exec node server.js"]

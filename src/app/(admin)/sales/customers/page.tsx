@@ -9,7 +9,6 @@ import {
   Card,
   Row,
   Col,
-  Statistic,
   Input,
   Drawer,
   Form,
@@ -22,21 +21,16 @@ import {
   Descriptions,
 } from "antd";
 import {
-  UserOutlined,
   PlusOutlined,
-  DollarOutlined,
-  WarningOutlined,
-  CheckCircleOutlined,
   SearchOutlined,
   EyeOutlined,
   EditOutlined,
-  LockOutlined,
 } from "@ant-design/icons";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-export default function CustomersPage() {
+export default function CustomersPage({ canManage = false }: { canManage?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [searchText, setSearchText] = useState("");
@@ -136,14 +130,6 @@ export default function CustomersPage() {
       // Form validation failed
     }
   };
-
-  // Metrics
-  const totalCustomers = customers.length;
-  const totalAR = customers.reduce((sum, c) => sum + (c.currentDebt || 0), 0);
-  const overLimitCount = customers.filter(
-    (c) => c.creditLimit > 0 && c.currentDebt > c.creditLimit
-  ).length;
-  const blockedCount = customers.filter((c) => c.isBlocked).length;
 
   const columns = [
     {
@@ -247,13 +233,13 @@ export default function CustomersPage() {
           >
             Hồ sơ
           </Button>
-          <Button
+          {canManage ? <Button
             size="small"
             icon={<EditOutlined />}
             onClick={() => handleOpenEdit(r)}
           >
             Sửa
-          </Button>
+          </Button> : null}
         </Space>
       ),
     },
@@ -271,7 +257,7 @@ export default function CustomersPage() {
             Theo dõi hạn mức tín dụng, công nợ phải thu và chặn đơn hàng vượt định mức
           </Text>
         </Col>
-        <Col>
+        {canManage ? <Col>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -280,51 +266,7 @@ export default function CustomersPage() {
           >
             Thêm Khách Hàng
           </Button>
-        </Col>
-      </Row>
-
-      {/* Metrics Row */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <Statistic
-              title="Tổng số khách hàng"
-              value={totalCustomers}
-              prefix={<UserOutlined style={{ color: "#1890ff" }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <Statistic
-              title="Tổng công nợ phải thu (AR)"
-              value={totalAR}
-              precision={0}
-              suffix="đ"
-              prefix={<DollarOutlined style={{ color: "#52c41a" }} />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <Statistic
-              title="Vượt hạn mức tín dụng"
-              value={overLimitCount}
-              prefix={<WarningOutlined style={{ color: "#faad14" }} />}
-              valueStyle={{ color: overLimitCount > 0 ? "#faad14" : "#52c41a" }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card bordered={false} style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-            <Statistic
-              title="Khách hàng bị khóa nợ"
-              value={blockedCount}
-              prefix={<LockOutlined style={{ color: "#ff4d4f" }} />}
-              valueStyle={{ color: blockedCount > 0 ? "#ff4d4f" : "#52c41a" }}
-            />
-          </Card>
-        </Col>
+        </Col> : null}
       </Row>
 
       {/* Filter and Search */}
@@ -364,7 +306,7 @@ export default function CustomersPage() {
       </Card>
 
       {/* Form Drawer (Create / Edit) */}
-      <Drawer
+      {canManage ? <Drawer
         title={editingCustomer ? "Chỉnh Sửa Hồ Sơ Khách Hàng" : "Thêm Mới Khách Hàng"}
         width={560}
         open={formDrawerOpen}
@@ -463,7 +405,7 @@ export default function CustomersPage() {
             </Row>
           </Card>
         </Form>
-      </Drawer>
+      </Drawer> : null}
 
       {/* Customer Detail Drawer */}
       <Drawer

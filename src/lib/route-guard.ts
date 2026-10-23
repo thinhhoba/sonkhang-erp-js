@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
+import { hasPermission, type Permission } from "@/lib/permissions";
 
 export interface SessionUser {
   id?: string;
@@ -55,4 +56,36 @@ export function requireRole(
     );
   }
   return null;
+}
+
+/** Server-side permission guard. Unknown roles fail closed. */
+export function requirePermission(
+  user: SessionUser,
+  permission: Permission
+): NextResponse | null {
+  if (!hasPermission(user.role, permission)) {
+    return NextResponse.json(
+      { success: false, error: "Không có quyền thực hiện thao tác này!" },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
+/**
+ * Resource ownership guard for route handlers. Elevated roles may operate a
+ * resource on behalf of its owner; ordinary users may only operate their own.
+ */
+export function requireOwnerOrRole(
+  user: SessionUser,
+  ownerId: string,
+  elevatedRoles: string[] = ["ADMIN"]
+): NextResponse | null {
+  if (user.id === ownerId || (user.role && elevatedRoles.includes(user.role))) {
+    return null;
+  }
+  return NextResponse.json(
+    { success: false, error: "Không có quyền thao tác tài nguyên này!" },
+    { status: 403 }
+  );
 }

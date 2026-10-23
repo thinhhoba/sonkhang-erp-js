@@ -16,6 +16,7 @@ function createMockTx(initial: MockProduct) {
     [initial.id]: { ...initial },
   };
   const ledgers: any[] = [];
+  const audits: any[] = [];
   const tx = {
     product: {
       findUnique: vi.fn(async ({ where }: any) => {
@@ -34,8 +35,10 @@ function createMockTx(initial: MockProduct) {
         return entry;
       }),
     },
+    auditLog: { create: vi.fn(async ({ data }: any) => { audits.push(data); return data; }) },
     __store: store,
     __ledgers: ledgers,
+    __audits: audits,
   };
   return tx;
 }
@@ -57,6 +60,7 @@ describe('InventoryService.recordTransactionInTx — Luật Thép Số 1', () =>
         referenceCode: 'TRIP-TEST-01',
         qtyChange: -30,
         inTransitChange: 30,
+        actorId: 'warehouse-1',
       });
       expect(tx.__store['p1'].currentStock).toBe(70);
       expect(tx.__store['p1'].inTransitStock).toBe(30);
@@ -72,7 +76,8 @@ describe('InventoryService.recordTransactionInTx — Luật Thép Số 1', () =>
       type: 'IN_RETURN_TRIP',
       referenceCode: 'TRIP-TEST-01',
       qtyChange: 20,
-      inTransitChange: -20,
+        inTransitChange: -20,
+        actorId: 'warehouse-1',
     });
     expect(tx.__store['p1'].currentStock).toBe(90);
     expect(tx.__store['p1'].inTransitStock).toBe(10);
@@ -87,7 +92,8 @@ describe('InventoryService.recordTransactionInTx — Luật Thép Số 1', () =>
       type: 'ADJUSTMENT',
       referenceCode: 'ADJ-BROKEN',
       qtyChange: 0,
-      inTransitChange: -10,
+        inTransitChange: -10,
+        actorId: 'warehouse-1',
       note: 'Hàng hỏng trên xe',
     });
     expect(tx.__store['p1'].currentStock).toBe(90);
@@ -105,5 +111,27 @@ describe('InventoryService.recordTransactionInTx — Luật Thép Số 1', () =>
         qtyChange: -5,
       })
     ).rejects.toThrow();
+  });
+
+  it('5. reject biến động làm âm tồn kho, không tạo ledger hay cập nhật cache', async () => {
+    const tx = createMockTx({ id: 'p1', currentStock: 4, inTransitStock: 0, avgCostPrice: 10000 });
+    await expect(
+      InventoryService.recordTransactionInTx(tx as any, {
+        productId: 'p1', type: 'ADJUSTMENT', referenceCode: 'XK-LOW-STOCK', qtyChange: -5,
+      })
+    ).rejects.toThrow('âm tồn kho');
+    expect(tx.inventoryLedger.create).not.toHaveBeenCalled();
+    expect(tx.product.update).not.toHaveBeenCalled();
+  });
+
+  it('6. reject biến động làm âm tồn trên xe', async () => {
+    const tx = createMockTx({ id: 'p1', currentStock: 10, inTransitStock: 2, avgCostPrice: 10000 });
+    await expect(
+      InventoryService.recordTransactionInTx(tx as any, {
+        productId: 'p1', type: 'IN_RETURN_TRIP', referenceCode: 'TRIP-LOW-TRANSIT', qtyChange: 0, inTransitChange: -3,
+        actorId: 'warehouse-1',
+      })
+    ).rejects.toThrow('âm tồn kho');
+    expect(tx.inventoryLedger.create).not.toHaveBeenCalled();
   });
 });

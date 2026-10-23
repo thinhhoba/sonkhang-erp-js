@@ -1,9 +1,10 @@
-// Service Worker for Son Khang ERP PWA
-const CACHE_NAME = 'sonkhang-erp-v1';
+// Public-shell-only service worker. Authenticated business data is never cached.
+const CACHE_NAME = 'sonkhang-erp-shell-v2';
 const STATIC_ASSETS = [
-  '/',
+  '/pwa/offline',
   '/manifest.json',
-  '/globals.css'
+  '/icons/icon-192x192.png',
+  '/icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -31,20 +32,19 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests and non-API routes
-  if (event.request.method !== 'GET' || event.request.url.includes('/api/')) {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request).catch(() => caches.match('/pwa/offline')));
     return;
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          return cachedResponse || new Response('Offline', { status: 503, statusText: 'Offline' });
-        });
-      })
-  );
+  const publicAsset = url.pathname.startsWith('/_next/static/') || url.pathname.startsWith('/icons/');
+  if (!publicAsset) return;
+  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+    if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+    return response;
+  })));
 });

@@ -9,8 +9,9 @@ export async function POST(
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    // Chỉ Thủ kho / Điều phối viên hoặc Admin được xác nhận nhận hàng hoàn
-    const forbidden = requireRole(auth.user, ["DISPATCHER", "ADMIN"]);
+    // Chỉ Thủ kho hoặc Admin được xác nhận nhận hàng hoàn. Điều phối không
+    // được ghi checkpoint kho hay tạo audit thay Thủ kho.
+    const forbidden = requireRole(auth.user, ["WAREHOUSE", "ADMIN"]);
     if (forbidden) return forbidden;
 
     const trip = await LogisticsService.settleReturnStock(params.id, auth.user.id!);

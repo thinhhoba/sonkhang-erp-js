@@ -49,19 +49,19 @@ export default function ModernSaasDashboard() {
   const [period, setPeriod] = useState<"7d" | "30d" | "6m">("30d");
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<any>({
-    totalRevenue: 2845000000,
-    totalArDebt: 412000000,
-    cashFund: 185000000,
-    bankFund: 940000000,
-    totalFund: 112500000,
-    totalInventoryValue: 1450000000,
-    ordersCount: 1280,
-    waitingOrdersCount: 42,
-    overCreditCount: 3,
-    lowStockCount: 5,
-    returnsCount: 14,
-    tripsCount: 28,
-    vehiclesCount: 6,
+    totalRevenue: 0,
+    totalArDebt: 0,
+    cashFund: 0,
+    bankFund: 0,
+    totalFund: 0,
+    totalInventoryValue: 0,
+    ordersCount: 0,
+    waitingOrdersCount: 0,
+    overCreditCount: 0,
+    lowStockCount: 0,
+    returnsCount: 0,
+    tripsCount: 0,
+    vehiclesCount: 0,
     pendingOrdersApproval: [],
     pendingExpenses: [],
     waitingSettleTrips: [],
@@ -468,7 +468,7 @@ export default function ModernSaasDashboard() {
                     marginTop: 4,
                   }}
                 >
-                  {(stats.totalRevenue || 2845000000).toLocaleString("vi-VN")} đ
+                  {(stats.totalRevenue ?? 0).toLocaleString("vi-VN")} đ
                 </div>
                 <div
                   style={{
@@ -547,7 +547,7 @@ export default function ModernSaasDashboard() {
                     marginTop: 4,
                   }}
                 >
-                  {(stats.ordersCount || 1280).toLocaleString("vi-VN")} đơn
+                  {(stats.ordersCount ?? 0).toLocaleString("vi-VN")} đơn
                 </div>
                 <div
                   style={{
@@ -626,7 +626,7 @@ export default function ModernSaasDashboard() {
                     marginTop: 4,
                   }}
                 >
-                  {(stats.totalFund || 1125000000).toLocaleString("vi-VN")} đ
+                  {(stats.totalFund ?? 0).toLocaleString("vi-VN")} đ
                 </div>
                 <div
                   style={{

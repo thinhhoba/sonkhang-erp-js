@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { LogisticsService } from "@/services/logistics.service";
-import { requireSession } from "@/lib/route-guard";
+import { requireSession, requireRole } from "@/lib/route-guard";
 
 export async function POST(
   req: Request,
@@ -9,6 +9,8 @@ export async function POST(
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
+    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
+    if (forbidden) return forbidden;
 
     // Khóa sổ kiểm tra cả 2 chốt cashSettledAt + returnStockSettledAt
     // bên trong PayrollService.settleAndCloseTrip; AuditLog ghi đúng người bấm.

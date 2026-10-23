@@ -65,6 +65,7 @@ export default function SuppliersManagementPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [canWrite, setCanWrite] = useState(false);
 
   const [form] = Form.useForm();
 
@@ -87,6 +88,7 @@ export default function SuppliersManagementPage() {
 
   useEffect(() => {
     fetchSuppliers();
+    fetch("/api/auth/session").then((response) => response.json()).then((session) => setCanWrite(["ADMIN", "ACCOUNTANT"].includes(session?.user?.role))).catch(() => setCanWrite(false));
   }, []);
 
   const handleOpenCreate = () => {
@@ -116,10 +118,11 @@ export default function SuppliersManagementPage() {
   const handleSubmitForm = async (values: any) => {
     setSubmitting(true);
     try {
-      const res = await fetch("/api/procurement/suppliers", {
-        method: "POST",
+      const target = editingSupplier ? `/api/procurement/suppliers/${editingSupplier.id}` : "/api/procurement/suppliers";
+      const res = await fetch(target, {
+        method: editingSupplier ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify(editingSupplier ? { ...values, code: editingSupplier.code, taxCode: editingSupplier.taxCode } : values),
       });
 
       const result = await res.json();
@@ -176,10 +179,8 @@ export default function SuppliersManagementPage() {
       dataIndex: "code",
       key: "code",
       width: 140,
-      render: (code: string) => (
-        <Text strong style={{ color: "#0958d9" }}>
-          {code}
-        </Text>
+      render: (code: string, supplier: Supplier) => (
+        <a href={`/purchasing/suppliers/${supplier.id}`}><Text strong style={{ color: "#0958d9" }}>{code}</Text></a>
       ),
     },
     {
@@ -268,7 +269,7 @@ export default function SuppliersManagementPage() {
       width: 90,
       align: "center" as const,
       render: (_: any, r: Supplier) => (
-        <Button size="small" type="link" onClick={() => handleOpenEdit(r)}>
+        <Button size="small" type="link" disabled={!canWrite} onClick={() => handleOpenEdit(r)}>
           Sửa
         </Button>
       ),
@@ -297,14 +298,14 @@ export default function SuppliersManagementPage() {
         </div>
 
         <Space>
-          <Button
+          {canWrite && <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={handleOpenCreate}
             style={{ background: "#1890ff" }}
           >
             Thêm Nhà cung cấp mới
-          </Button>
+          </Button>}
           <Button icon={<SyncOutlined spin={loading} />} onClick={fetchSuppliers}>
             Làm mới
           </Button>

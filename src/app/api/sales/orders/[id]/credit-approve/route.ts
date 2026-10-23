@@ -1,32 +1,22 @@
 import { NextResponse } from "next/server";
-import { SalesARService } from "@/services/sales-ar.service";
+import { SalesCreditDomainError, SalesCreditService } from "@/services/sales-credit.service";
 import { requireSession, requireRole } from "@/lib/route-guard";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
-    const forbidden = requireRole(auth.user, ["ACCOUNTANT", "ADMIN"]);
+    const forbidden = requireRole(auth.user, ["ADMIN"]);
     if (forbidden) return forbidden;
     const body = await req.json();
-    const { action, note, employeeId } = body;
-
-    if (action === "REJECT") {
-      const order = await SalesARService.rejectCreditException(
-        params.id,
-        employeeId || "GIAM_DOC",
-        note || "Từ chối duyệt vượt hạn mức công nợ"
-      );
-      return NextResponse.json({ success: true, data: order });
+    if (body?.action !== "APPROVE" && body?.action !== "REJECT") {
+      return NextResponse.json({ success: false, error: "Hành động duyệt không hợp lệ" }, { status: 400 });
     }
-
-    const order = await SalesARService.approveCreditException(
-      params.id,
-      employeeId || "GIAM_DOC",
-      note || "Giám đốc phê duyệt cho phép xuất hàng dù vượt hạn mức công nợ"
-    );
+    const order = await SalesCreditService.decide(params.id, body.action, auth.user.id!, body.note);
     return NextResponse.json({ success: true, data: order });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    if (error instanceof SalesCreditDomainError) return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    console.error("Sales credit decision failed");
+    return NextResponse.json({ success: false, error: "Không thể xử lý yêu cầu duyệt hạn mức" }, { status: 500 });
   }
 }

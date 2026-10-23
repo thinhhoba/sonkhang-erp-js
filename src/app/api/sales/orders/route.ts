@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireSession } from "@/lib/route-guard";
+import { requireRole, requireSession } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
   try {
     const auth = await requireSession();
     if ("error" in auth) return auth.error;
+    const forbidden = requireRole(auth.user, ["ADMIN", "ACCOUNTANT"]);
+    if (forbidden) return forbidden;
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const query = searchParams.get("q")?.trim();
@@ -29,9 +31,13 @@ export async function GET(req: NextRequest) {
 
     const orders = await prisma.salesOrder.findMany({
       where: whereClause,
-      include: {
+      select: {
+        id: true, orderCode: true, customerName: true, customerPhone: true,
+        shippingAddress: true, totalWeightKg: true, totalAmount: true,
+        codAmountRequired: true, deliveryStatus: true, misaSyncStatus: true,
+        requiresCreditApproval: true, creditApprovalStatus: true, orderDate: true,
         items: {
-          include: {
+          select: { id: true, orderedQty: true, deliveredQty: true, returnedQty: true, unitPrice: true, lineAmount: true,
             product: {
               select: {
                 id: true,
@@ -41,8 +47,7 @@ export async function GET(req: NextRequest) {
                 weightKg: true,
               },
             },
-          },
-        },
+          } },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -53,9 +58,10 @@ export async function GET(req: NextRequest) {
       data: orders,
       count: orders.length,
     });
-  } catch (error: any) {
+  } catch (error) {
+    console.error("Sales orders list failed");
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: "Không thể tải danh sách đơn hàng" },
       { status: 500 }
     );
   }

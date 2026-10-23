@@ -1,0 +1,2 @@
+import PwaShell,{PwaActionGrid} from "@/components/pwa/PwaShell";
+export default function Page(){return <PwaShell title="Kế toán" subtitle="COD, công nợ và chứng từ"><PwaActionGrid actions={[{href:"/finance/transactions",label:"Thu chi",description:"Giao dịch và phê duyệt"},{href:"/logistics/trips",label:"Đối soát COD",description:"Chuyến chờ quyết toán"},{href:"/debts",label:"Công nợ",description:"Phải thu và phải trả"},{href:"/documents",label:"Chứng từ",description:"Tra cứu hồ sơ số"}]}/></PwaShell>}
